@@ -80,6 +80,8 @@ pub struct App {
     last_notified: Option<PathBuf>,
     settings: Settings,
     settings_path: Option<PathBuf>,
+    /// Whether the system media controls connected, shown in the About box.
+    media_status: String,
 }
 
 /// What a worker poll changed.
@@ -125,6 +127,7 @@ impl App {
             last_notified: None,
             settings: Settings::default(),
             settings_path: None,
+            media_status: String::new(),
         }
     }
 
@@ -714,9 +717,21 @@ impl App {
     /// Connect the system media layer. Done once, after the window exists.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn attach_media(&mut self, media: Box<dyn MediaSession>) {
+        self.media_status = media.status();
         self.media = media;
         self.media_dirty = true;
         self.publish_now_playing();
+    }
+
+    /// The system media controls could not be connected. Shown in the About box.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn media_unavailable(&mut self, reason: &str) {
+        self.media_status = format!("Windows media controls are not connected: {reason}");
+    }
+
+    fn test_notification(&mut self) {
+        let result = self.media.send_test_notification();
+        self.media_status = format!("{}\n{result}", self.media.status());
     }
 
     fn set_notifications(&mut self, on: bool) {
@@ -861,6 +876,7 @@ impl App {
         );
         state.set_volume(self.volume);
         state.set_notifications(self.settings.notifications);
+        state.set_media_status(self.media_status.as_str().into());
     }
 }
 
@@ -918,6 +934,7 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
         .remove_from_playlist(row));
     on!(on_volume_changed, |a, v| a.set_volume(v));
     on!(on_seek, |a, f| a.seek(f));
+    on!(on_test_notification, |a| a.test_notification());
     on!(on_notifications_changed, |a, on| a.set_notifications(on));
 
     // Adding a folder: pick it, scan on a background thread, then merge on the UI thread.

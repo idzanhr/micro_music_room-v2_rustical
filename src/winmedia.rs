@@ -128,10 +128,22 @@ fn register_notification_identity() -> windows::core::Result<()> {
             None,
         )
         .ok()?;
-        let result = set_registry_text(key, "DisplayName", APP_NAME).and_then(|()| match &icon {
-            Some(path) => set_registry_text(key, "IconUri", &path.to_string_lossy()),
-            None => Ok(()),
-        });
+        let result = set_registry_text(key, "DisplayName", APP_NAME)
+            .and_then(|()| match &icon {
+                Some(path) => set_registry_text(key, "IconUri", &path.to_string_lossy()),
+                None => Ok(()),
+            })
+            // Makes the app appear in Settings > System > Notifications, where it can be muted.
+            .and_then(|()| {
+                RegSetValueExW(
+                    key,
+                    &HSTRING::from("ShowInSettings"),
+                    None,
+                    REG_DWORD,
+                    Some(&1u32.to_le_bytes()),
+                )
+                .ok()
+            });
         let _ = RegCloseKey(key);
         result
     }
@@ -190,12 +202,18 @@ pub struct WinMedia {
     identity: Option<HSTRING>,
     /// Alternates, so a new cover never overwrites a file the shell may still be reading.
     cover_slot: u8,
+    /// The last notification problem, for the About box.
+    last_toast_error: Option<String>,
 }
 
 impl WinMedia {
     /// Connect to the system media controls for this window. `window` must be the player's real
     /// window handle, so the window must already exist.
     pub fn new(window: HWND, identity: Option<HSTRING>) -> windows::core::Result<Self> {
+        // Windows Runtime calls need this thread to have joined an apartment. The window library
+        // may or may not have done it; asking twice is harmless (it answers "already done").
+        // SAFETY: plain initialisation call on the UI thread.
+        let _ = unsafe { RoInitialize(RO_INIT_SINGLETHREADED) };
         let interop =
             factory::<SystemMediaTransportControls, ISystemMediaTransportControlsInterop>()?;
         // SAFETY: `window` is a live top-level window of this process.
@@ -246,6 +264,7 @@ impl WinMedia {
             window,
             identity,
             cover_slot: 0,
+            last_toast_error: None,
         })
     }
 
@@ -290,10 +309,10 @@ impl WinMedia {
         Ok(())
     }
 
-    fn toast(&mut self, now: &NowPlaying) -> windows::core::Result<()> {
+    fn toast(&mut self, now: &NowPlaying, force: bool) -> windows::core::Result<()> {
         // No point notifying about a song the user is looking at.
         // SAFETY: a plain query.
-        if unsafe { GetForegroundWindow() } == self.window {
+        if !force && unsafe { GetForegroundWindow() } == self.window {
             return Ok(());
         }
         let cover = match (&now.cover_png, data_dir()) {
@@ -356,7 +375,36 @@ impl MediaSession for WinMedia {
     }
 
     fn notify_track_change(&mut self, now: &NowPlaying) {
-        let _ = self.toast(now);
+        self.last_toast_error = self.toast(now, false).err().map(|e| e.to_string());
+    }
+
+    fn status(&self) -> String {
+        match &self.last_toast_error {
+            None => "Connected to the Windows media controls.".into(),
+            Some(e) => {
+                format!("Connected to the Windows media controls. Last notification problem: {e}")
+            }
+        }
+    }
+
+    fn send_test_notification(&mut self) -> String {
+        let now = NowPlaying {
+            title: "Micro Music Room".into(),
+            artist: "Test notification".into(),
+            album: "If you can read this, notifications work.".into(),
+            ..NowPlaying::default()
+        };
+        match self.toast(&now, true) {
+            Ok(()) => {
+                self.last_toast_error = None;
+                "Test notification sent. If nothing appeared, check Settings > System > Notifications and Do Not Disturb.".into()
+            }
+            Err(e) => {
+                let text = format!("Windows refused the notification: {e}");
+                self.last_toast_error = Some(e.to_string());
+                text
+            }
+        }
     }
 }
 

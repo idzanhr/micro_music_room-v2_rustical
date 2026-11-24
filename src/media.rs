@@ -49,6 +49,15 @@ pub trait MediaSession {
     /// Announce a new song with a notification. The implementation may stay quiet, for example
     /// when the player window is already in front.
     fn notify_track_change(&mut self, now: &NowPlaying);
+    /// One line saying whether the system media controls are connected, for the About box. It is
+    /// the first place to look when the flyout or media keys do nothing.
+    fn status(&self) -> String {
+        String::new()
+    }
+    /// Show a notification right now, even if the window is in front, and report what happened.
+    fn send_test_notification(&mut self) -> String {
+        "Notifications aren't available here.".into()
+    }
 }
 
 /// Does nothing. Used where there is no system media layer to talk to.

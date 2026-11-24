@@ -20,6 +20,7 @@ export global AppState {
     in property <string> version;
     in-out property <bool> about-open;
     in property <bool> notifications; // notify when the song changes
+    in property <string> media-status; // is Windows' media layer connected?
 
     // Player
     in property <bool> has-current;
@@ -61,4 +62,5 @@ export global AppState {
     callback seek(float);
     callback volume-changed(float);
     callback notifications-changed(bool);
+    callback test-notification();
 }
