@@ -17,6 +17,8 @@ pub mod track;
 #[cfg(windows)]
 pub mod winmedia;
 #[cfg(windows)]
+pub mod winthumb;
+#[cfg(windows)]
 pub mod wmf;
 
 #[cfg(test)]

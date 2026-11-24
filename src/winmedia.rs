@@ -14,7 +14,10 @@
 //! plain exe (the zip version) registers one under `HKCU\Software\Classes\AppUserModelId`, which
 //! touches nothing outside the current user.
 
-use crate::media::{MediaCommand, MediaSession, NowPlaying, Playback};
+use crate::{
+    media::{MediaCommand, MediaSession, NowPlaying, Playback},
+    winthumb::ThumbBar,
+};
 use std::{
     path::{Path, PathBuf},
     sync::mpsc::{self, Receiver},
@@ -35,18 +38,28 @@ use windows::{
         Foundation::{ERROR_INSUFFICIENT_BUFFER, HWND},
         Storage::Packaging::Appx::GetCurrentPackageFullName,
         System::{
+            Com::{
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+                CoTaskMemAlloc, IPersistFile,
+                StructuredStorage::{PROPVARIANT, PROPVARIANT_0_0, PropVariantClear},
+            },
             Registry::{
                 HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
                 RegCloseKey, RegCreateKeyExW, RegSetValueExW,
             },
+            Variant::VT_LPWSTR,
             WinRT::{ISystemMediaTransportControlsInterop, RO_INIT_SINGLETHREADED, RoInitialize},
         },
         UI::{
-            Shell::SetCurrentProcessExplicitAppUserModelID,
+            Shell::{
+                IShellLinkW,
+                PropertiesSystem::{IPropertyStore, PROPERTYKEY},
+                SetCurrentProcessExplicitAppUserModelID, ShellLink,
+            },
             WindowsAndMessaging::GetForegroundWindow,
         },
     },
-    core::{HSTRING, PCWSTR, factory},
+    core::{HSTRING, Interface, PCWSTR, PWSTR, factory},
 };
 
 /// The identity of the unpackaged (zip) app. The MSIX build has its own, assigned by Windows.
@@ -101,7 +114,72 @@ pub fn init_app_identity() -> Option<HSTRING> {
     // SAFETY: plain call with a valid string.
     let _ = unsafe { SetCurrentProcessExplicitAppUserModelID(&id) };
     let _ = register_notification_identity();
+    // Windows names the media card in the volume flyout after the Start Menu entry that carries
+    // this identity; without one it says "Unknown app".
+    let _ = ensure_start_menu_entry();
     Some(id)
+}
+
+/// `System.AppUserModel.ID`, the property that ties a shortcut to an app identity.
+const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {
+    fmtid: windows::core::GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
+    pid: 5,
+};
+
+/// A Start Menu shortcut to this exe that carries the app identity. Created only when missing or
+/// older than the exe (so moving the exe repairs it), and only in the current user's own menu.
+fn ensure_start_menu_entry() -> windows::core::Result<()> {
+    let exe = std::env::current_exe().map_err(|_| windows::core::Error::from_thread())?;
+    let Some(programs) = std::env::var_os("APPDATA").map(|p| {
+        PathBuf::from(p)
+            .join("Microsoft")
+            .join("Windows")
+            .join("Start Menu")
+            .join("Programs")
+    }) else {
+        return Ok(());
+    };
+    let link = programs.join(format!("{APP_NAME}.lnk"));
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    if let (Some(l), Some(e)) = (modified(&link), modified(&exe)) {
+        if l >= e {
+            return Ok(());
+        }
+    }
+    std::fs::create_dir_all(&programs).map_err(|_| windows::core::Error::from_thread())?;
+    // SAFETY: COM calls on the UI thread; every pointer passed is a live NUL-terminated string,
+    // and the PROPVARIANT's string is freed by `PropVariantClear`.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
+        shell_link.SetPath(&HSTRING::from(exe.as_os_str()))?;
+        shell_link.SetIconLocation(&HSTRING::from(exe.as_os_str()), 0)?;
+        shell_link.SetDescription(&HSTRING::from(APP_NAME))?;
+        if let Some(dir) = exe.parent() {
+            shell_link.SetWorkingDirectory(&HSTRING::from(dir.as_os_str()))?;
+        }
+        let store: IPropertyStore = shell_link.cast()?;
+        let units: Vec<u16> = AUMID.encode_utf16().chain(std::iter::once(0)).collect();
+        let bytes = units.len() * 2;
+        let text = CoTaskMemAlloc(bytes).cast::<u16>();
+        if text.is_null() {
+            return Err(windows::core::Error::from_thread());
+        }
+        std::ptr::copy_nonoverlapping(units.as_ptr(), text, units.len());
+        let mut value = PROPVARIANT::default();
+        value.Anonymous.Anonymous = std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
+            vt: VT_LPWSTR,
+            ..PROPVARIANT_0_0::default()
+        });
+        value.Anonymous.Anonymous.Anonymous.pwszVal = PWSTR(text);
+        let result = store
+            .SetValue(&PKEY_APP_USER_MODEL_ID, &value)
+            .and_then(|()| store.Commit());
+        let _ = PropVariantClear(&mut value);
+        result?;
+        let file: IPersistFile = shell_link.cast()?;
+        file.Save(&HSTRING::from(link.as_os_str()), true)
+    }
 }
 
 /// `HKCU\Software\Classes\AppUserModelId\<id>` with a display name and icon.
@@ -204,6 +282,8 @@ pub struct WinMedia {
     cover_slot: u8,
     /// The last notification problem, for the About box.
     last_toast_error: Option<String>,
+    /// Buttons under the taskbar preview; `None` if Windows would not take them.
+    thumb: Option<ThumbBar>,
 }
 
 impl WinMedia {
@@ -227,6 +307,7 @@ impl WinMedia {
 
         let (tx, commands) = mpsc::channel();
         let buttons = tx.clone();
+        let thumb = ThumbBar::new(window, tx.clone()).ok();
         smtc.ButtonPressed(
             &TypedEventHandler::new(
                 move |_,
@@ -265,6 +346,7 @@ impl WinMedia {
             identity,
             cover_slot: 0,
             last_toast_error: None,
+            thumb,
         })
     }
 
@@ -367,10 +449,18 @@ impl MediaSession for WinMedia {
     }
 
     fn set_playback(&mut self, state: Playback, position: Duration, length: Option<Duration>) {
+        if let Some(thumb) = &mut self.thumb {
+            thumb.set_playing(state == Playback::Playing);
+        }
         let _ = self.show_playback(state, position, length);
     }
 
     fn take_commands(&mut self) -> Vec<MediaCommand> {
+        // Called every few hundred milliseconds, which is also how often the taskbar buttons get
+        // another chance to be added.
+        if let Some(thumb) = &mut self.thumb {
+            thumb.tick();
+        }
         self.commands.try_iter().collect()
     }
 
