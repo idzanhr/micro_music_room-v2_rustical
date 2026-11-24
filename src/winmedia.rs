@@ -142,10 +142,10 @@ fn ensure_start_menu_entry() -> windows::core::Result<()> {
     };
     let link = programs.join(format!("{APP_NAME}.lnk"));
     let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-    if let (Some(l), Some(e)) = (modified(&link), modified(&exe)) {
-        if l >= e {
-            return Ok(());
-        }
+    if let (Some(l), Some(e)) = (modified(&link), modified(&exe))
+        && l >= e
+    {
+        return Ok(());
     }
     std::fs::create_dir_all(&programs).map_err(|_| windows::core::Error::from_thread())?;
     // SAFETY: COM calls on the UI thread; every pointer passed is a live NUL-terminated string,
