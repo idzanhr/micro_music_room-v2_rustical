@@ -1,0 +1,45 @@
+name: MSIX
+
+# Builds the Microsoft Store package (real identity, unsigned) and a test-signed copy with a
+# different identity for trying the packaged app on a real PC.
+on:
+  push:
+    branches: [main]
+    paths: [msix/**, scripts/**, src/**, ui/**, Cargo.toml, Cargo.lock, build.rs, assets/**, .github/workflows/msix.yml]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  msix:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Store package (unsigned, upload this to Partner Center)
+        shell: pwsh
+        run: ./scripts/package-msix.ps1 -Mode Store -OutputDirectory msix-store
+      - name: Test package (own identity, test-signed)
+        shell: pwsh
+        run: ./scripts/package-msix.ps1 -Mode Test -OutputDirectory msix-test
+      - name: Check the packages
+        shell: pwsh
+        run: |
+          Get-ChildItem msix-store, msix-test | Format-Table Name, Length
+          $sdk = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin"
+          $signtool = (Get-ChildItem $sdk -Filter signtool.exe -Recurse | Where-Object { $_.FullName -match "\\x64\\" } | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          & $signtool verify /pa (Get-ChildItem msix-store -Filter *.msix).FullName 2>&1 | Out-String | Write-Host
+          "Store package has no signature on purpose (exit code above is expected to be non-zero)."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MicroMusicRoom-v2-MSIX-Store-upload
+          path: msix-store/*.msix
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MicroMusicRoom-v2-MSIX-Test-install
+          path: msix-test/*
+          retention-days: 30
