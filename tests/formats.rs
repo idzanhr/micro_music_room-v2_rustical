@@ -10,16 +10,17 @@
 //! MMR_SAMPLES_DIR=/path/to/samples cargo test --test formats -- --nocapture
 //! ```
 //!
-//! Known gap: `.wma`. Symphonia has no ASF/WMA demuxer, so WMA is reported as a KNOWN GAP (and
-//! does not fail the run) until a Windows Media Foundation fallback exists. If a WMA ever starts
-//! decoding, the run says so, so this list can be updated.
+//! `.wma`: Symphonia has no ASF/WMA demuxer, so WMA is decoded through Windows Media Foundation
+//! (see `src/wmf.rs`) and only works on Windows. Off Windows it is reported as a KNOWN GAP and does
+//! not fail the run.
 //!
 //! Each file must decode completely, be audible (not silence), report a plausible duration, and
 //! survive a seek to the middle (the progress bar depends on it).
 
+use micro_music_room::decode;
 use micro_music_room::track::is_supported;
-use rodio::{Decoder, Source};
-use std::{fs::File, path::Path, time::Duration};
+use rodio::Source;
+use std::{path::Path, time::Duration};
 
 struct Outcome {
     decoded: Duration,
@@ -31,10 +32,7 @@ struct Outcome {
 }
 
 fn check(path: &Path) -> Result<Outcome, String> {
-    let open = || {
-        let file = File::open(path).map_err(|e| format!("open: {e}"))?;
-        Decoder::try_from(file).map_err(|e| format!("decoder: {e}"))
-    };
+    let open = || decode::open(path).map_err(|e| format!("decoder: {e}"));
 
     let decoder = open()?;
     let (rate, channels) = (decoder.sample_rate().get(), decoder.channels().get());

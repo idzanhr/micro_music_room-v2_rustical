@@ -1,12 +1,16 @@
 // Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
 // Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
 
-//! Core logic for Micro Music Room, kept free of UI and Windows APIs so it can be unit-tested anywhere.
+//! Core logic for Micro Music Room, kept free of UI so it can be unit-tested anywhere. The only
+//! platform-specific code is `wmf` (Windows Media Foundation), compiled on Windows alone.
 
+pub mod decode;
 pub mod library;
 pub mod queue;
 pub mod scan;
 pub mod track;
+#[cfg(windows)]
+pub mod wmf;
 
 #[cfg(test)]
 pub(crate) mod testutil {

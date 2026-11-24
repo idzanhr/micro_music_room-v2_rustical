@@ -2695,6 +2695,7 @@ dependencies = [
  "slint",
  "slint-build",
  "walkdir",
+ "windows",
 ]
 
 [[package]]
