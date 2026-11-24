@@ -1,9 +1,13 @@
 name: Release
 
-# Push a tag such as v2.0 to build the portable zip and publish it as a GitHub Release.
+# Publishes the portable zip as a GitHub Release. Either push a tag such as v2.0, or change the
+# version in RELEASE_VERSION on main (the release and its tag are then created by this workflow).
 on:
   push:
     tags: ["v*"]
+    branches: [main]
+    paths: [RELEASE_VERSION]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,6 +17,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Work out the version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}" }
+          else { $v = (Get-Content RELEASE_VERSION -Raw).Trim() }
+          "VERSION=$v" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-targets
@@ -20,7 +30,7 @@ jobs:
       - name: Package portable zip
         shell: pwsh
         run: |
-          $name = "MicroMusicRoom-${{ github.ref_name }}-Portable-win-x64"
+          $name = "MicroMusicRoom-$env:VERSION-Portable-win-x64"
           New-Item -ItemType Directory -Path "dist/$name" | Out-Null
           Copy-Item target/release/MicroMusicRoom.exe, LICENSE, README.md "dist/$name/"
           Compress-Archive -Path "dist/$name" -DestinationPath "$name.zip"
@@ -40,4 +50,4 @@ jobs:
 
           SHA-256 of the zip: $((Get-Content "$env:ZIP.sha256").Split(' ')[0])
           "@
-          gh release create "${{ github.ref_name }}" "$env:ZIP" "$env:ZIP.sha256" --title "Micro Music Room ${{ github.ref_name }} Portable" --notes $notes
+          gh release create "$env:VERSION" "$env:ZIP" "$env:ZIP.sha256" --target ${{ github.sha }} --title "Micro Music Room $env:VERSION Portable" --notes $notes

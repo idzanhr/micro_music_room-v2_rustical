@@ -85,7 +85,7 @@ MMR_SAMPLES_DIR=/path/to/samples cargo test --test formats -- --nocapture
 
 ## Releasing
 
-Push a tag such as `v2.0` and the *Release* workflow tests, builds, zips (with a SHA-256 file) and publishes the GitHub Release.
+Change the version in `RELEASE_VERSION` on `main` (or push a tag such as `v2.0`) and the *Release* workflow tests, builds, zips (with a SHA-256 file) and publishes the GitHub Release.
 
 ## Develop
 
