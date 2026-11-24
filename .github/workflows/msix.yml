@@ -25,14 +25,9 @@ jobs:
       - name: Test package (own identity, test-signed)
         shell: pwsh
         run: ./scripts/package-msix.ps1 -Mode Test -OutputDirectory msix-test
-      - name: Check the packages
+      - name: List the packages
         shell: pwsh
-        run: |
-          Get-ChildItem msix-store, msix-test | Format-Table Name, Length
-          $sdk = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Windows Kits\10\bin"
-          $signtool = (Get-ChildItem $sdk -Filter signtool.exe -Recurse | Where-Object { $_.FullName -match "\\x64\\" } | Sort-Object FullName -Descending | Select-Object -First 1).FullName
-          & $signtool verify /pa (Get-ChildItem msix-store -Filter *.msix).FullName 2>&1 | Out-String | Write-Host
-          "Store package has no signature on purpose (exit code above is expected to be non-zero)."
+        run: Get-ChildItem msix-store, msix-test | Format-Table Name, Length
       - uses: actions/upload-artifact@v4
         with:
           name: MicroMusicRoom-v2-MSIX-Store-upload
