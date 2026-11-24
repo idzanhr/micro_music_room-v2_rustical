@@ -18,7 +18,7 @@ Rust 2024 (MSRV 1.95) · Slint 1.19 · rodio 0.23 (CPAL + Symphonia) · serde / 
 | Queue: shuffle, history, repeat | Done and tested (fixes the v1 shuffle bug) |
 | Folder scan, file-name parsing | Done, tested |
 | Slint UI | Placeholder window with the palette only |
-| Decoding (rodio) | Verified for MP3, FLAC, WAV, M4A; WMA not supported yet |
+| Decoding | MP3, FLAC, WAV, M4A verified on real files; WMA via Media Foundation verified on a synthetic file in CI |
 | Audio output | Not started |
 | SMTC, toasts, taskbar buttons, Volume Mixer entry | Not started |
 | MSIX packaging | Not started |
@@ -46,9 +46,9 @@ Decode, audibility, duration and mid-file seek checked with `tests/formats.rs` (
 | WAV | Works | real file, 16-bit PCM |
 | M4A (AAC-LC) | Works | real file, 48 kHz. Peaks slightly above full scale (AAC decoder overshoot), so output will need a limiter or clamp |
 | AAC (raw ADTS) | Works | **synthetic** (made with ffmpeg from the WAV), not yet tried on a real file |
-| WMA | **Not supported** | **synthetic** (wmav2), fails to open: Symphonia has no ASF/WMA demuxer. Needs a Windows Media Foundation fallback |
+| WMA | Works on Windows (via Windows Media Foundation) | **synthetic** 1.5 s tone (wmav2), tested on a GitHub Windows runner: decode, duration, seek and a path with Croatian characters. Not yet tried on a real-world WMA (old encoders, WMA Lossless). Not supported off Windows |
 
-Not yet verified: playback to a real audio device, and anything on Windows itself (the tests ran on Linux). WMA from older or lossless encoders is untested.
+Not yet verified: playback to a real audio device, and the real-sample test files have only been run on Linux. The Windows CI runner covers the WMA fixture and the unit tests, not your own music.
 
 Run it on your own files (never committed, they are usually copyrighted):
 
@@ -58,7 +58,7 @@ MMR_SAMPLES_DIR=/path/to/samples cargo test --test formats -- --nocapture
 
 ## Other open questions
 
-- **Windows APIs** (SMTC, AppUserModelID, thumbnail buttons, audio session) are untested: development so far ran on Linux, so none of the Windows-only code has been compiled or run yet.
+- **Windows APIs** (SMTC, AppUserModelID, thumbnail buttons, audio session) are not written yet. The Media Foundation WMA decoder is the only Windows-specific code so far, and it is checked by CI on `windows-latest`.
 
 ## Develop
 
