@@ -36,12 +36,20 @@ export component PlayerBar inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 border-radius: 10px;
                 background: Theme.walnut-raised;
+                clip: true;
 
-                Image {
+                if !AppState.has-cover: Image {
                     source: @image-url("icons/note.svg");
                     width: 26px;
                     height: 26px;
                     colorize: AppState.has-current ? Theme.copper : Theme.parchment-faint;
+                }
+
+                if AppState.has-cover: Image {
+                    source: AppState.cover;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: cover;
                 }
             }
 

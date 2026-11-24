@@ -12,17 +12,29 @@ use crate::{AppState, MainWindow, PlaylistItem, TrackRow, dialog};
 use micro_music_room::{
     engine::{LoadError, Output, RodioOutput},
     library::{Library, default_library_path},
-    model::{Browser, View, format_duration},
+    model::{Browser, Entry, View, format_duration},
     queue::{Queue, Repeat, Rng},
     scan::{ScanResult, scan_folder},
+    tags::{CacheEntry, Cover, Done, Job, TagCache, TagWorker, default_cache_path, key_of},
     track::{Track, is_supported},
 };
-use slint::{ComponentHandle, ModelRc, Timer, TimerMode, VecModel};
+use slint::{
+    ComponentHandle, Model, ModelRc, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode, VecModel,
+};
 use std::{
-    cell::RefCell, collections::BTreeSet, path::PathBuf, rc::Rc, sync::mpsc, time::Duration,
+    cell::{Cell, RefCell},
+    collections::{BTreeSet, HashSet},
+    path::PathBuf,
+    rc::Rc,
+    sync::mpsc,
+    time::{Duration, Instant},
 };
 
 const DEFAULT_VOLUME: f32 = 0.8;
+/// Rows read beyond the visible ones, so a slow scroll finds them already filled in.
+const TAG_MARGIN: usize = 20;
+/// How often a changed tag cache is written out.
+const CACHE_SAVE_EVERY: Duration = Duration::from_secs(10);
 /// Unplayable files in a row before playback gives up instead of skipping on through the list.
 const MAX_SKIPS: usize = 3;
 /// "Previous" restarts the song instead of going back once it has played this long.
@@ -47,6 +59,23 @@ pub struct App {
     /// The file the output has loaded, and its length when the format reports one.
     loaded: Option<PathBuf>,
     length: Option<Duration>,
+    tags: TagCache,
+    cache_path: Option<PathBuf>,
+    last_cache_save: Instant,
+    worker: TagWorker,
+    /// Files already requested this session, so scrolling back and forth asks only once.
+    asked: RefCell<HashSet<String>>,
+    /// First visible row and how many fit, as last reported by the list.
+    view_range: (usize, usize),
+    cover: Option<Cover>,
+    cover_dirty: Cell<bool>,
+}
+
+/// What a worker poll changed.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Polled {
+    pub rows: bool,
+    pub cover: bool,
 }
 
 impl App {
@@ -71,12 +100,34 @@ impl App {
             output,
             loaded: None,
             length: None,
+            tags: TagCache::default(),
+            cache_path: None,
+            last_cache_save: Instant::now(),
+            worker: TagWorker::spawn(),
+            asked: RefCell::new(HashSet::new()),
+            view_range: (0, 30),
+            cover: None,
+            cover_dirty: Cell::new(false),
         }
     }
 
     /// Load the v1 library read-only. `MMR_LIBRARY` points the app at another file, so it can be
     /// tried without touching the real one.
     pub fn load() -> Self {
+        let mut app = Self::load_library();
+        // The tag cache sits beside the real library, or beside the one `MMR_LIBRARY` points at.
+        app.cache_path = app
+            .library_path
+            .as_ref()
+            .map(|p| p.with_file_name("tagcache.json"))
+            .or_else(default_cache_path);
+        if let Some(path) = &app.cache_path {
+            app.tags = TagCache::load(path);
+        }
+        app
+    }
+
+    fn load_library() -> Self {
         let output = || Box::new(RodioOutput::new(DEFAULT_VOLUME)) as Box<dyn Output>;
         let path = std::env::var_os("MMR_LIBRARY")
             .map(PathBuf::from)
@@ -197,6 +248,9 @@ impl App {
             match self.output.load(&path) {
                 Ok(length) => {
                     self.length = length;
+                    self.cover = None;
+                    self.cover_dirty.set(true);
+                    self.worker.request(Job::Cover(path.clone()));
                     self.loaded = Some(path);
                     self.playing = true;
                     return;
@@ -444,6 +498,124 @@ impl App {
 
     // ---- showing it ---------------------------------------------------------------------
 
+    /// One table row: real tags where they have been read, else what the file name says.
+    fn row_for(&self, index: usize, entry: &Entry, current: Option<&PathBuf>) -> TrackRow {
+        let path = &entry.track.path;
+        let tags = self.tags.tags(path);
+        let pick = |tag: Option<&str>, fallback: &str| -> String {
+            tag.filter(|t| !t.is_empty()).unwrap_or(fallback).to_owned()
+        };
+        let artist = pick(tags.map(|t| t.artist.as_str()), &entry.track.artist);
+        TrackRow {
+            title: pick(tags.map(|t| t.title.as_str()), &entry.track.title).into(),
+            artist: if artist.is_empty() {
+                "—".into()
+            } else {
+                artist.into()
+            },
+            album: pick(tags.map(|t| t.album.as_str()), &entry.track.folder).into(),
+            duration: format_duration(tags.and_then(|t| t.seconds)).into(),
+            playing: current == Some(path),
+            selected: self.selection.contains(&index),
+        }
+    }
+
+    /// The window reports which rows are on screen. Remember it and read their tags.
+    fn rows_visible(&mut self, first: i32, count: i32) {
+        self.view_range = (
+            usize::try_from(first).unwrap_or(0),
+            usize::try_from(count).unwrap_or(0).max(1),
+        );
+        self.want_tags();
+    }
+
+    /// Ask the worker for the tags of every row on screen (plus a margin) that has not been asked
+    /// for yet this session. Cached rows are asked about too, once, to notice a retagged file.
+    fn want_tags(&self) {
+        let visible = self.browser.visible();
+        let (first, count) = self.view_range;
+        let lo = first.saturating_sub(TAG_MARGIN).min(visible.len());
+        let hi = (first + count + TAG_MARGIN).min(visible.len());
+        let mut asked = self.asked.borrow_mut();
+        let wanted: Vec<_> = visible[lo..hi]
+            .iter()
+            .filter(|e| asked.insert(key_of(&e.track.path)))
+            .map(|e| {
+                let known = self.tags.get(&e.track.path).map(|c| c.stamp);
+                (e.track.path.clone(), known)
+            })
+            .collect();
+        if !wanted.is_empty() {
+            self.worker.request(Job::Tags(wanted));
+        }
+    }
+
+    /// Collect what the worker has finished. Cheap; the timer calls it constantly.
+    pub fn poll_worker(&mut self) -> Polled {
+        let mut polled = Polled::default();
+        let mut dropped = false;
+        while let Some(done) = self.worker.try_recv() {
+            match done {
+                Done::Tags { path, stamp, tags } => {
+                    self.tags.put(&path, CacheEntry { stamp, tags });
+                    polled.rows = true;
+                }
+                Done::Dropped(paths) => {
+                    let mut asked = self.asked.borrow_mut();
+                    for path in paths {
+                        asked.remove(&key_of(&path));
+                    }
+                    dropped = true;
+                }
+                Done::Cover { path, cover } => {
+                    // The song may have changed while this was being read.
+                    if self.loaded.as_ref() == Some(&path) {
+                        self.cover = cover;
+                        self.cover_dirty.set(true);
+                        polled.cover = true;
+                    }
+                }
+            }
+        }
+        if dropped {
+            self.want_tags();
+        }
+        polled
+    }
+
+    /// Redraw only the rows near the viewport, after tags arrived. Replacing the whole list for
+    /// every batch would be wasteful and would jump the scroll position.
+    pub fn refresh_tag_rows(&self, ui: &MainWindow) {
+        let rows = ui.global::<AppState>().get_rows();
+        let visible = self.browser.visible();
+        let (first, count) = self.view_range;
+        let lo = first.saturating_sub(TAG_MARGIN).min(visible.len());
+        let hi = (first + count + TAG_MARGIN).min(visible.len());
+        let current = self.queue.current();
+        for (i, entry) in visible.iter().enumerate().take(hi).skip(lo) {
+            if i >= rows.row_count() {
+                break;
+            }
+            let row = self.row_for(i, entry, current);
+            if rows.row_data(i).as_ref() != Some(&row) {
+                rows.set_row_data(i, row);
+            }
+        }
+        self.refresh_player(ui);
+    }
+
+    /// Write the tag cache if it changed and it has been a while (or `force`).
+    pub fn save_tags(&mut self, force: bool) {
+        if !self.tags.is_dirty() || !(force || self.last_cache_save.elapsed() >= CACHE_SAVE_EVERY) {
+            return;
+        }
+        if let Some(path) = &self.cache_path {
+            // A cache that cannot be written costs nothing but re-reading tags next time.
+            let _ = self.tags.save(path);
+        }
+        self.last_cache_save = Instant::now();
+    }
+
     pub fn refresh(&self, ui: &MainWindow) {
         let state = ui.global::<AppState>();
         let current = self.queue.current();
@@ -453,21 +625,11 @@ impl App {
         let rows: Vec<TrackRow> = visible
             .iter()
             .enumerate()
-            .map(|(i, e)| TrackRow {
-                title: e.track.title.as_str().into(),
-                artist: if e.track.artist.is_empty() {
-                    "—".into()
-                } else {
-                    e.track.artist.as_str().into()
-                },
-                // Real album tags come with tag reading; until then the folder stands in.
-                album: e.track.folder.as_str().into(),
-                duration: format_duration(None).as_str().into(),
-                playing: current == Some(&e.track.path),
-                selected: self.selection.contains(&i),
-            })
+            .map(|(i, e)| self.row_for(i, e, current))
             .collect();
         state.set_rows(ModelRc::new(VecModel::from(rows)));
+        drop(visible);
+        self.want_tags();
 
         let playlists: Vec<PlaylistItem> = self
             .browser
@@ -523,8 +685,31 @@ impl App {
         let current = self.queue.current();
         state.set_has_current(current.is_some());
         let now = current.map(|p| Track::from_path(p.clone()));
-        state.set_now_title(now.as_ref().map_or("", |t| t.title.as_str()).into());
-        state.set_now_artist(now.as_ref().map_or("", |t| t.artist.as_str()).into());
+        let tags = current.and_then(|p| self.tags.tags(p));
+        let pick = |tag: Option<&str>, fallback: &str| -> String {
+            tag.filter(|t| !t.is_empty()).unwrap_or(fallback).to_owned()
+        };
+        let title = pick(
+            tags.map(|t| t.title.as_str()),
+            now.as_ref().map_or("", |t| t.title.as_str()),
+        );
+        let artist = pick(
+            tags.map(|t| t.artist.as_str()),
+            now.as_ref().map_or("", |t| t.artist.as_str()),
+        );
+        state.set_now_title(title.into());
+        state.set_now_artist(artist.into());
+        if self.cover_dirty.replace(false) {
+            match &self.cover {
+                Some(c) => {
+                    let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(c.width, c.height);
+                    pixels.make_mut_bytes().copy_from_slice(&c.rgba);
+                    state.set_cover(slint::Image::from_rgba8(pixels));
+                    state.set_has_cover(true);
+                }
+                None => state.set_has_cover(false),
+            }
+        }
         state.set_playing(self.playing);
         state.set_shuffle(self.queue.shuffle());
         state.set_repeat_mode(match self.queue.repeat() {
@@ -554,6 +739,11 @@ impl App {
     }
 }
 
+/// Write out anything unsaved. Call when the window closes.
+pub fn flush(app: &Rc<RefCell<App>>) {
+    app.borrow_mut().save_tags(true);
+}
+
 /// Connect every callback. The returned timer must be kept alive for as long as the window runs:
 /// it is what hands finished folder scans back to the UI thread.
 pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
@@ -580,6 +770,11 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
 
     on!(on_select_view, |a, i| a.select_view(i));
     on!(on_search_edited, |a, text| a.search(&text));
+    {
+        // Reporting the visible rows must not redraw the list, so it skips the `on!` refresh.
+        let app = app.clone();
+        state.on_rows_visible(move |first, count| app.borrow_mut().rows_visible(first, count));
+    }
     on!(on_select_row, |a, row, ctrl, shift| a
         .select_row(row, ctrl, shift));
     on!(on_play_row, |a, row| a.play_row(row));
@@ -634,12 +829,16 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
             changed = true;
         }
         changed |= app.borrow_mut().tick();
+        let polled = app.borrow_mut().poll_worker();
+        app.borrow_mut().save_tags(false);
         let Some(ui) = weak.upgrade() else {
             return;
         };
         if changed {
             app.borrow().refresh(&ui);
-        } else if app.borrow().playing {
+        } else if polled.rows {
+            app.borrow().refresh_tag_rows(&ui);
+        } else if polled.cover || app.borrow().playing {
             app.borrow().refresh_player(&ui);
         }
     });
@@ -1032,6 +1231,167 @@ mod tests {
         a.play_row(0);
         assert!(!a.playing && out.borrow().loaded.is_none());
         assert_eq!(a.queue.current(), Some(&PathBuf::from("/m/bad2.mp3")));
+    }
+
+    /// A 3-second silent WAV with an ID3v2 tag, optionally with a 64x64 PNG cover.
+    fn tagged_wav(path: &std::path::Path, title: &str, artist: &str, album: &str, cover: bool) {
+        use lofty::{
+            config::WriteOptions,
+            picture::{MimeType, Picture, PictureType},
+            tag::{Accessor, Tag, TagExt, TagType},
+        };
+        let rate = 8000u32;
+        let data_len = rate * 2 * 3;
+        let mut b = Vec::new();
+        b.extend(b"RIFF");
+        b.extend((36 + data_len).to_le_bytes());
+        b.extend(b"WAVEfmt ");
+        b.extend(16u32.to_le_bytes());
+        b.extend(1u16.to_le_bytes());
+        b.extend(1u16.to_le_bytes());
+        b.extend(rate.to_le_bytes());
+        b.extend((rate * 2).to_le_bytes());
+        b.extend(2u16.to_le_bytes());
+        b.extend(16u16.to_le_bytes());
+        b.extend(b"data");
+        b.extend(data_len.to_le_bytes());
+        b.extend(std::iter::repeat_n(0u8, data_len as usize));
+        std::fs::write(path, b).unwrap();
+        let mut tag = Tag::new(TagType::Id3v2);
+        tag.set_title(title.into());
+        tag.set_artist(artist.into());
+        tag.set_album(album.into());
+        if cover {
+            let img = image::RgbaImage::from_pixel(64, 64, image::Rgba([200, 116, 60, 255]));
+            let mut png = std::io::Cursor::new(Vec::new());
+            img.write_to(&mut png, image::ImageFormat::Png).unwrap();
+            tag.push_picture(
+                Picture::unchecked(png.into_inner())
+                    .pic_type(PictureType::CoverFront)
+                    .mime_type(MimeType::Png)
+                    .build(),
+            );
+        }
+        tag.save_to_path(path, WriteOptions::default()).unwrap();
+    }
+
+    /// Run the worker poll until `done` says so (or give up).
+    fn poll_until(a: &mut App, mut done: impl FnMut(Polled) -> bool) {
+        for _ in 0..500 {
+            if done(a.poll_worker()) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the worker never delivered");
+    }
+
+    #[test]
+    fn rows_show_real_tags_once_the_worker_has_read_them() {
+        use slint::Model;
+        let ui = window();
+        let dir = std::env::temp_dir().join(format!("mmr-tags-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let song = dir.join("01 - raw name.wav");
+        tagged_wav(&song, "Slušaj mater", "Kerber", "Čežnja", false);
+
+        let mut a = app(&[song.to_str().unwrap()]);
+        a.refresh(&ui);
+        let state = ui.global::<AppState>();
+        assert_eq!(
+            state.get_rows().row_data(0).unwrap().title,
+            "raw name",
+            "file name first"
+        );
+        assert_eq!(state.get_rows().row_data(0).unwrap().duration, "—");
+
+        poll_until(&mut a, |p| p.rows);
+        a.refresh_tag_rows(&ui);
+        let row = state.get_rows().row_data(0).unwrap();
+        assert_eq!(row.title, "Slušaj mater");
+        assert_eq!(row.artist, "Kerber");
+        assert_eq!(row.album, "Čežnja");
+        assert_eq!(row.duration, "0:03");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_tag_cache_is_saved_and_shows_instantly_next_time() {
+        use slint::Model;
+        let ui = window();
+        let dir = std::env::temp_dir().join(format!("mmr-cache-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let song = dir.join("a.wav");
+        tagged_wav(
+            &song,
+            "Cached title",
+            "Cached artist",
+            "Cached album",
+            false,
+        );
+        let cache = dir.join("tagcache.json");
+
+        let mut first = app(&[song.to_str().unwrap()]);
+        first.cache_path = Some(cache.clone());
+        first.refresh(&ui);
+        poll_until(&mut first, |p| p.rows);
+        first.save_tags(true);
+        assert!(cache.exists());
+
+        // A fresh app starts from the file: the row is right on the very first draw.
+        let mut second = app(&[song.to_str().unwrap()]);
+        second.tags = TagCache::load(&cache);
+        second.refresh(&ui);
+        let row = ui.global::<AppState>().get_rows().row_data(0).unwrap();
+        assert_eq!(
+            (row.title.as_str(), row.duration.as_str()),
+            ("Cached title", "0:03")
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_rows_near_the_viewport_are_asked_for() {
+        let paths: Vec<String> = (0..500).map(|i| format!("/m/{i}.mp3")).collect();
+        let refs: Vec<&str> = paths.iter().map(String::as_str).collect();
+        let (a, _) = playing_app(&refs);
+        a.want_tags();
+        let asked = a.asked.borrow().len();
+        assert!(
+            asked <= 30 + TAG_MARGIN + 1,
+            "first screen only, asked {asked}"
+        );
+        assert!(asked > 0);
+    }
+
+    #[test]
+    fn the_cover_of_the_playing_song_reaches_the_player_bar() {
+        let ui = window();
+        let dir = std::env::temp_dir().join(format!("mmr-cover-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let song = dir.join("a.wav");
+        tagged_wav(&song, "t", "a", "b", true);
+
+        let (mut a, _) = playing_app(&[song.to_str().unwrap()]);
+        a.play_row(0);
+        a.refresh(&ui);
+        assert!(
+            !ui.global::<AppState>().get_has_cover(),
+            "none until it has been read"
+        );
+        poll_until(&mut a, |p| p.cover);
+        a.refresh_player(&ui);
+        assert!(ui.global::<AppState>().get_has_cover());
+
+        // Moving to a song without art clears it again.
+        a.cover = None;
+        a.cover_dirty.set(true);
+        a.refresh_player(&ui);
+        assert!(!ui.global::<AppState>().get_has_cover());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

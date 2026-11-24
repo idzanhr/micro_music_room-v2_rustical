@@ -157,3 +157,36 @@ fn real_samples_are_safe_to_play() {
         assert!(peak <= 1.0, "{} clips at {peak}", path.display());
     }
 }
+
+/// Tags and cover art from the real files. Prints what was found so it can be eyeballed
+/// (Croatian letters especially); only asserts that every file reports a length.
+#[test]
+fn real_samples_have_readable_tags() {
+    let Some(dir) = std::env::var_os("MMR_SAMPLES_DIR") else {
+        eprintln!("MMR_SAMPLES_DIR not set; skipping real-sample tag test");
+        return;
+    };
+    for path in std::fs::read_dir(&dir)
+        .expect("read MMR_SAMPLES_DIR")
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| is_supported(p))
+    {
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        let started = std::time::Instant::now();
+        let tags = micro_music_room::tags::read_tags(&path);
+        let took = started.elapsed();
+        let cover = micro_music_room::tags::read_cover(&path);
+        match tags {
+            Some(t) => eprintln!(
+                "{name}\n    title={:?} artist={:?} album={:?} length={:?}s cover={} ({took:?})",
+                t.title,
+                t.artist,
+                t.album,
+                t.seconds,
+                cover.map_or("none".to_owned(), |c| format!("{}x{}", c.width, c.height)),
+            ),
+            None => eprintln!("{name}: tags not readable here (WMA needs Windows) ({took:?})"),
+        }
+    }
+}

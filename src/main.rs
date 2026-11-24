@@ -13,7 +13,11 @@ slint::include_modules!();
 
 fn main() -> Result<(), slint::PlatformError> {
     let ui = MainWindow::new()?;
-    // Kept alive for the whole run: it hands finished folder scans back to the UI thread.
-    let _scan_timer = app::wire(&ui, Rc::new(RefCell::new(app::App::load())));
-    ui.run()
+    // Kept alive for the whole run: it hands finished folder scans and tag reads back to the UI
+    // thread.
+    let app = Rc::new(RefCell::new(app::App::load()));
+    let _timer = app::wire(&ui, app.clone());
+    let result = ui.run();
+    app::flush(&app);
+    result
 }

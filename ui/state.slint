@@ -24,6 +24,8 @@ export global AppState {
     in property <bool> has-current;
     in property <string> now-title;
     in property <string> now-artist;
+    in property <image> cover;
+    in property <bool> has-cover;
     in property <bool> playing;
     in property <bool> shuffle;
     in property <int> repeat-mode; // 0 off, 1 all, 2 one
@@ -42,6 +44,7 @@ export global AppState {
     callback delete-playlist(int);
 
     // Track rows (row = index in the visible list)
+    callback rows-visible(int, int); // first visible row, how many fit: tags are read for these
     callback select-row(int, bool, bool); // row, ctrl held, shift held
     callback play-row(int);
     callback play-all();

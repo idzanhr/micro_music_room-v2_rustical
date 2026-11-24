@@ -10,6 +10,7 @@ pub mod library;
 pub mod model;
 pub mod queue;
 pub mod scan;
+pub mod tags;
 pub mod track;
 #[cfg(windows)]
 pub mod wmf;

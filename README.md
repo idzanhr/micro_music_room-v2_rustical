@@ -14,12 +14,13 @@ Rust 2024 (MSRV 1.95) · Slint 1.19 · rodio 0.23 (CPAL + Symphonia) · serde / 
 | Area | State |
 |---|---|
 | Library loader (v1 `library.json`, PascalCase) | Done, read-only, tested |
-| Atomic save with backups | Done and tested, **not yet called anywhere** |
+| Atomic save with backups | Done, tested, used when you add songs or change playlists |
 | Queue: shuffle, history, repeat | Done and tested (fixes the v1 shuffle bug) |
 | Folder scan, file-name parsing | Done, tested |
 | Slint UI | v1 layout in rustic dark colours: sidebar (All songs, Recently added, playlists), searchable song list with multi-select, bottom player. Playback works through the default output device (untested on real Windows hardware) |
 | Decoding | MP3, FLAC, WAV, M4A verified on real files; WMA via Media Foundation verified on a synthetic file in CI |
 | Audio output | Play, pause, seek, volume, next/previous, auto-advance, repeat. Peak limiter for over-loud files. Written and unit-tested with a silent backend; not yet heard on real Windows hardware |
+| Tags and cover art | Title, artist, album, length and cover (embedded, or `cover.jpg`/`folder.jpg` beside the song) via lofty. Read lazily for the rows on screen on a background thread, cached in `%LOCALAPPDATA%\MusicRoom\tagcache.json` (a disposable cache; `library.json` is never touched). WMA tags are not read yet |
 | SMTC, toasts, taskbar buttons, Volume Mixer entry | Not started |
 | MSIX packaging | Not started |
 
@@ -44,7 +45,7 @@ Decode, audibility, duration and mid-file seek checked with `tests/formats.rs` (
 | MP3 | Works | real file, 320 kbps, embedded cover |
 | FLAC | Works | real file, 44.1 kHz, embedded cover |
 | WAV | Works | real file, 16-bit PCM |
-| M4A (AAC-LC) | Works | real file, 48 kHz. Peaks slightly above full scale (AAC decoder overshoot), so output will need a limiter or clamp |
+| M4A (AAC-LC) | Works | real file, 48 kHz. Peaks above full scale (AAC decoder overshoot); playback runs through a limiter and clamp |
 | AAC (raw ADTS) | Works | **synthetic** (made with ffmpeg from the WAV), not yet tried on a real file |
 | WMA | Works on Windows (via Windows Media Foundation) | **synthetic** 1.5 s tone (wmav2), tested on a GitHub Windows runner: decode, duration, seek and a path with Croatian characters. Not yet tried on a real-world WMA (old encoders, WMA Lossless). Not supported off Windows |
 

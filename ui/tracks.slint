@@ -372,6 +372,14 @@ export component TrackTable inherits Rectangle {
         if AppState.rows.length > 0: ListView {
             vertical-stretch: 1;
 
+            // Tell Rust which rows are on screen, so it reads tags only for those.
+            changed content-y => {
+                AppState.rows-visible(Math.max(0, Math.floor(-self.content-y / 42px)), Math.ceil(self.visible-height / 42px) + 1);
+            }
+            changed visible-height => {
+                AppState.rows-visible(Math.max(0, Math.floor(-self.content-y / 42px)), Math.ceil(self.visible-height / 42px) + 1);
+            }
+
             for track[index] in AppState.rows: Rectangle {
                 height: 42px;
 
