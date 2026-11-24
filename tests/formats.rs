@@ -130,3 +130,30 @@ fn real_samples_decode() {
         failures.join("\n")
     );
 }
+
+/// What the player actually feeds the sound card: every real sample, through the limiter, must stay
+/// inside full scale (one M4A sample peaks at 1.22 before limiting) and must still seek.
+#[test]
+fn real_samples_are_safe_to_play() {
+    let Some(dir) = std::env::var_os("MMR_SAMPLES_DIR") else {
+        eprintln!("MMR_SAMPLES_DIR not set; skipping real-sample playback test");
+        return;
+    };
+    for path in std::fs::read_dir(&dir)
+        .expect("read MMR_SAMPLES_DIR")
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| is_supported(p))
+    {
+        let Ok((mut source, length)) = micro_music_room::engine::prepare(&path) else {
+            eprintln!("{}: not decodable here (see the main test)", path.display());
+            continue;
+        };
+        if let Some(length) = length {
+            source.try_seek(length / 2).expect("seek");
+        }
+        let peak = source.take(2_000_000).map(f32::abs).fold(0.0, f32::max);
+        eprintln!("{}: limited peak {peak:.3}", path.display());
+        assert!(peak <= 1.0, "{} clips at {peak}", path.display());
+    }
+}

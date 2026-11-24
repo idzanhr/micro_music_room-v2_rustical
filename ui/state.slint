@@ -29,8 +29,9 @@ export global AppState {
     in property <int> repeat-mode; // 0 off, 1 all, 2 one
     in property <string> elapsed: "0:00";
     in property <string> total: "0:00";
-    in-out property <float> progress;
-    in-out property <float> volume: 0.8;
+    in property <float> progress; // 0.0 to 1.0
+    in property <bool> seekable; // false when the file doesn't report its length
+    in property <float> volume: 0.8;
 
     // Navigation and library
     callback select-view(int);

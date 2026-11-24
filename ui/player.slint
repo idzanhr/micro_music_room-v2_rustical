@@ -140,10 +140,10 @@ export component PlayerBar inherits Rectangle {
                 }
 
                 Slider {
-                    value <=> AppState.progress;
-                    enabled: AppState.has-current;
+                    value: AppState.progress;
+                    enabled: AppState.has-current && AppState.seekable;
                     horizontal-stretch: 1;
-                    changed(v) => {
+                    released(v) => {
                         AppState.seek(v);
                     }
                 }
@@ -174,7 +174,7 @@ export component PlayerBar inherits Rectangle {
             }
 
             Slider {
-                value <=> AppState.volume;
+                value: AppState.volume;
                 width: 130px;
                 y: (parent.height - self.height) / 2;
                 changed(v) => {

@@ -17,9 +17,9 @@ Rust 2024 (MSRV 1.95) · Slint 1.19 · rodio 0.23 (CPAL + Symphonia) · serde / 
 | Atomic save with backups | Done and tested, **not yet called anywhere** |
 | Queue: shuffle, history, repeat | Done and tested (fixes the v1 shuffle bug) |
 | Folder scan, file-name parsing | Done, tested |
-| Slint UI | v1 layout in rustic dark colours: sidebar (All songs, Recently added, playlists), searchable song list with multi-select, bottom player. Playback is not connected yet |
+| Slint UI | v1 layout in rustic dark colours: sidebar (All songs, Recently added, playlists), searchable song list with multi-select, bottom player. Playback works through the default output device (untested on real Windows hardware) |
 | Decoding | MP3, FLAC, WAV, M4A verified on real files; WMA via Media Foundation verified on a synthetic file in CI |
-| Audio output | Not started |
+| Audio output | Play, pause, seek, volume, next/previous, auto-advance, repeat. Peak limiter for over-loud files. Written and unit-tested with a silent backend; not yet heard on real Windows hardware |
 | SMTC, toasts, taskbar buttons, Volume Mixer entry | Not started |
 | MSIX packaging | Not started |
 

@@ -5,6 +5,7 @@
 //! platform-specific code is `wmf` (Windows Media Foundation), compiled on Windows alone.
 
 pub mod decode;
+pub mod engine;
 pub mod library;
 pub mod model;
 pub mod queue;
