@@ -21,7 +21,8 @@ Rust 2024 (MSRV 1.95) · Slint 1.19 · rodio 0.23 (CPAL + Symphonia) · serde / 
 | Decoding | MP3, FLAC, WAV, M4A verified on real files; WMA via Media Foundation verified on a synthetic file in CI |
 | Audio output | Play, pause, seek, volume, next/previous, auto-advance, repeat. Peak limiter for over-loud files. Written and unit-tested with a silent backend; not yet heard on real Windows hardware |
 | Tags and cover art | Title, artist, album, length and cover (embedded, or `cover.jpg`/`folder.jpg` beside the song) via lofty. Read lazily for the rows on screen on a background thread, cached in `%LOCALAPPDATA%\MusicRoom\tagcache.json` (a disposable cache; `library.json` is never touched). WMA tags are not read yet |
-| SMTC, toasts, taskbar buttons, Volume Mixer entry | Not started |
+| Media flyout, media keys, track-change toasts | Written, compiles and unit-tests on Windows CI; not yet tried on real hardware |
+| Taskbar thumbnail buttons, Volume Mixer session name | Not started |
 | MSIX packaging | Not started |
 
 ## Library compatibility
