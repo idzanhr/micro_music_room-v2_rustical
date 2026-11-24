@@ -9,7 +9,10 @@
 //! limiter in front: some files are mastered past full scale (a real M4A sample peaked at 1.22),
 //! and without the limiter those peaks would clip.
 
-use crate::decode::{self, AudioSource};
+use crate::{
+    decode::{self, AudioSource},
+    mixer::VolumeSync,
+};
 use rodio::{
     ChannelCount, DeviceSinkBuilder, Player, SampleRate, Source,
     source::{Limit, LimitSettings, SeekError},
@@ -104,6 +107,11 @@ pub trait Output {
     fn finished(&self) -> bool;
     /// `slider` is 0.0 to 1.0 as on screen; the backend applies [`gain_for`].
     fn set_volume(&mut self, slider: f32);
+    /// Polled often: the new slider value if something outside the app (the Windows Volume Mixer)
+    /// changed the volume since the last call.
+    fn external_volume(&mut self) -> Option<f32> {
+        None
+    }
     fn stop(&mut self);
 }
 
@@ -114,7 +122,8 @@ pub trait Output {
 pub struct RodioOutput {
     sink: Option<MixerDeviceSink>,
     player: Option<Player>,
-    gain: f32,
+    /// Shares the volume with the app's slider in the Windows Volume Mixer.
+    mixer: VolumeSync,
 }
 
 impl RodioOutput {
@@ -122,7 +131,17 @@ impl RodioOutput {
         Self {
             sink: None,
             player: None,
-            gain: gain_for(slider_volume),
+            mixer: VolumeSync::system(slider_volume),
+        }
+    }
+
+    /// Once the mixer owns the volume the player runs at full gain; otherwise the app applies its
+    /// own curve.
+    fn gain(&self) -> f32 {
+        if self.mixer.linked() {
+            1.0
+        } else {
+            gain_for(self.mixer.slider())
         }
     }
 
@@ -141,7 +160,7 @@ impl Output for RodioOutput {
     fn load(&mut self, path: &Path) -> Result<Option<Duration>, LoadError> {
         // Decode first, so a bad file leaves whatever is playing untouched until we know.
         let (source, length) = prepare(path).map_err(LoadError::BadFile)?;
-        let gain = self.gain;
+        let gain = self.gain();
         let player = Player::connect_new(self.sink()?.mixer());
         player.set_volume(gain);
         player.append(source);
@@ -178,10 +197,23 @@ impl Output for RodioOutput {
     }
 
     fn set_volume(&mut self, slider: f32) {
-        self.gain = gain_for(slider);
+        self.mixer.user_set(slider);
         if let Some(p) = &self.player {
-            p.set_volume(self.gain);
+            p.set_volume(self.gain());
         }
+    }
+
+    fn external_volume(&mut self) -> Option<f32> {
+        let was_linked = self.mixer.linked();
+        let changed = self
+            .mixer
+            .poll(self.sink.is_some() && self.player.is_some());
+        if self.mixer.linked() != was_linked
+            && let Some(p) = &self.player
+        {
+            p.set_volume(self.gain());
+        }
+        changed
     }
 
     fn stop(&mut self) {

@@ -371,6 +371,17 @@ impl App {
         self.output.set_volume(self.volume);
     }
 
+    /// Picks up a volume change made in the Windows Volume Mixer. True if the slider moved.
+    pub fn poll_volume(&mut self) -> bool {
+        match self.output.external_volume() {
+            Some(v) => {
+                self.volume = v.clamp(0.0, 1.0);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Called by the timer. Starts the next song when the current one has played out. Returns true
     /// if the song changed, so the caller redraws the list's "playing" marker.
     pub fn tick(&mut self) -> bool {
@@ -974,6 +985,7 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
         changed |= app.borrow_mut().tick();
         changed |= app.borrow_mut().poll_media();
         app.borrow_mut().sync_media();
+        let volume_moved = app.borrow_mut().poll_volume();
         let polled = app.borrow_mut().poll_worker();
         app.borrow_mut().save_tags(false);
         let Some(ui) = weak.upgrade() else {
@@ -983,7 +995,7 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
             app.borrow().refresh(&ui);
         } else if polled.rows {
             app.borrow().refresh_tag_rows(&ui);
-        } else if polled.cover || app.borrow().playing {
+        } else if polled.cover || volume_moved || app.borrow().playing {
             app.borrow().refresh_player(&ui);
         }
     });

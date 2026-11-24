@@ -8,6 +8,7 @@ pub mod decode;
 pub mod engine;
 pub mod library;
 pub mod media;
+pub mod mixer;
 pub mod model;
 pub mod queue;
 pub mod scan;
@@ -18,6 +19,8 @@ pub mod track;
 pub mod winmedia;
 #[cfg(windows)]
 pub mod winthumb;
+#[cfg(windows)]
+pub mod winvolume;
 #[cfg(windows)]
 pub mod wmf;
 
