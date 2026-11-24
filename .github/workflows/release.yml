@@ -21,7 +21,7 @@ jobs:
         shell: pwsh
         run: |
           if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}" }
-          else { $v = (Get-Content RELEASE_VERSION -Raw).Trim() }
+          else { $v = (Get-Content RELEASE_VERSION | Where-Object { $_ -match '^v' } | Select-Object -First 1).Trim() }
           "VERSION=$v" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -50,4 +50,6 @@ jobs:
 
           SHA-256 of the zip: $((Get-Content "$env:ZIP.sha256").Split(' ')[0])
           "@
+          # Re-running for the same version replaces the old release (and its tag).
+          gh release delete "$env:VERSION" --cleanup-tag --yes 2>$null
           gh release create "$env:VERSION" "$env:ZIP" "$env:ZIP.sha256" --target ${{ github.sha }} --title "Micro Music Room $env:VERSION Portable" --notes $notes
