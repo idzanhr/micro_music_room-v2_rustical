@@ -9,4 +9,21 @@ fn main() {
     let config = CompilerConfiguration::new().with_style("fluent-dark".into());
     slint_build::compile_with_config("ui/main.slint", config)
         .expect("failed to compile the Slint UI");
+
+    // The exe's own icon. Windows takes the Volume Mixer entry, the taskbar button (before the
+    // window opens) and Explorer's file icon from it.
+    #[cfg(windows)]
+    {
+        let mut resources = winresource::WindowsResource::new();
+        resources.set_icon("assets/icon.ico");
+        resources.set("ProductName", "Micro Music Room");
+        resources.set("FileDescription", "Micro Music Room");
+        resources.set(
+            "LegalCopyright",
+            "Copyright (C) 2026 Marko Idžan. GPL-3.0-or-later",
+        );
+        resources
+            .compile()
+            .expect("failed to embed the Windows icon");
+    }
 }

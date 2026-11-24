@@ -29,6 +29,9 @@ i-slint-backend-testing = "1.19"
 [build-dependencies]
 slint-build = "1.19"
 
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [profile.release]
 lto = true
 codegen-units = 1
