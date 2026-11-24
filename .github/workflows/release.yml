@@ -1,0 +1,43 @@
+name: Release
+
+# Push a tag such as v2.0 to build the portable zip and publish it as a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  portable:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-targets
+      - run: cargo build --release
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $name = "MicroMusicRoom-${{ github.ref_name }}-Portable-win-x64"
+          New-Item -ItemType Directory -Path "dist/$name" | Out-Null
+          Copy-Item target/release/MicroMusicRoom.exe, LICENSE, README.md "dist/$name/"
+          Compress-Archive -Path "dist/$name" -DestinationPath "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File -Encoding ascii "$name.zip.sha256"
+          "ZIP=$name.zip" | Out-File -Append -Encoding ascii $env:GITHUB_ENV
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          Portable build of Micro Music Room v2 (Rust). Unzip anywhere and run MicroMusicRoom.exe. No installer, no admin rights.
+
+          Windows may show a SmartScreen warning because the exe is not code-signed yet: choose More info, then Run anyway.
+          Your v1 library (%LOCALAPPDATA%\MusicRoom\library.json) is picked up automatically.
+
+          SHA-256 of the zip: $((Get-Content "$env:ZIP.sha256").Split(' ')[0])
+          "@
+          gh release create "${{ github.ref_name }}" "$env:ZIP" "$env:ZIP.sha256" --title "Micro Music Room ${{ github.ref_name }} Portable" --notes $notes
