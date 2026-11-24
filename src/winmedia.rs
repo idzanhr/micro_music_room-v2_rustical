@@ -36,10 +36,10 @@ use windows::{
         Storage::Packaging::Appx::GetCurrentPackageFullName,
         System::{
             Registry::{
-                HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
-                RegCreateKeyExW, RegSetValueExW,
+                HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
+                RegCloseKey, RegCreateKeyExW, RegSetValueExW,
             },
-            WinRT::ISystemMediaTransportControlsInterop,
+            WinRT::{ISystemMediaTransportControlsInterop, RO_INIT_SINGLETHREADED, RoInitialize},
         },
         UI::{
             Shell::SetCurrentProcessExplicitAppUserModelID,
