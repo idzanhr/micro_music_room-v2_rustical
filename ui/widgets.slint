@@ -3,20 +3,21 @@
 
 import { Theme } from "theme.slint";
 
-// A round icon button. `prominent` fills it copper (the play button); `active` tints a toggle that
-// is switched on (shuffle, repeat).
+// A round icon button. `prominent` fills it parchment with a dark glyph (the play button);
+// `active` tints a toggle that is switched on (shuffle, repeat).
 export component IconButton inherits Rectangle {
     in property <image> icon;
     in property <length> glyph: 18px;
     in property <bool> active;
     in property <bool> prominent;
+    in property <bool> square;
     in property <bool> enabled: true;
     callback clicked();
 
     width: 36px;
     height: 36px;
-    border-radius: self.width / 2;
-    background: root.prominent ? (touch.has-hover ? Theme.copper-bright : Theme.copper) : (touch.has-hover && root.enabled ? Theme.walnut-raised : transparent);
+    border-radius: root.square ? 10px : self.width / 2;
+    background: root.prominent ? (touch.has-hover ? #fff6e4 : Theme.parchment) : (touch.has-hover && root.enabled ? Theme.walnut-raised : transparent);
     animate background { duration: 120ms; }
 
     Image {
@@ -36,38 +37,36 @@ export component IconButton inherits Rectangle {
     }
 }
 
-// A text button: `primary` is copper, otherwise an outlined olive one.
+// A text button. `primary` is copper; otherwise it is a quiet raised timber button.
 export component TextButton inherits Rectangle {
     in property <string> text;
     in property <image> icon;
-    in property <bool> primary: true;
+    in property <bool> primary;
     in property <bool> enabled: true;
     callback clicked();
 
-    height: 36px;
+    height: 38px;
+    min-width: label.preferred-width + 36px + (root.icon.width > 0 ? 24px : 0px);
     border-radius: Theme.radius;
-    border-width: root.primary ? 0px : 1px;
-    border-color: Theme.olive;
-    background: root.primary ? (touch.has-hover ? Theme.copper-bright : Theme.copper) : (touch.has-hover ? Theme.olive-dim : transparent);
-    opacity: root.enabled ? 1.0 : 0.5;
+    background: root.primary ? (touch.has-hover && root.enabled ? Theme.copper-bright : Theme.copper) : (touch.has-hover && root.enabled ? #46331f : Theme.walnut-raised);
+    opacity: root.enabled ? 1.0 : 0.45;
     animate background { duration: 120ms; }
 
     HorizontalLayout {
         alignment: center;
         spacing: 8px;
-        padding-left: 14px;
-        padding-right: 14px;
+        padding-left: 16px;
+        padding-right: 16px;
 
-        Image {
+        if root.icon.width > 0: Image {
             source: root.icon;
-            width: 16px;
-            height: 16px;
+            width: 15px;
+            height: 15px;
             y: (parent.height - self.height) / 2;
             colorize: root.primary ? Theme.walnut-deep : Theme.parchment;
-            visible: root.icon.width > 0;
         }
 
-        Text {
+        label := Text {
             text: root.text;
             color: root.primary ? Theme.walnut-deep : Theme.parchment;
             font-size: 13px;
@@ -96,14 +95,18 @@ export component Slider inherits Rectangle {
 
     // Track and fill
     Rectangle {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: parent.width;
         height: 4px;
         border-radius: 2px;
         background: Theme.border;
-        y: (parent.height - self.height) / 2;
 
         Rectangle {
             x: 0px;
+            y: 0px;
             width: parent.width * Math.clamp(root.value, 0.0, 1.0);
+            height: parent.height;
             border-radius: 2px;
             background: root.enabled ? Theme.copper : Theme.parchment-faint;
         }

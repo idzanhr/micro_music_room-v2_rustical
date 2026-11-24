@@ -2,7 +2,7 @@
 // Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
 
 // "Rustic listening room": walnut surfaces, parchment text, copper and aged-brass accents, with a
-// restrained olive as the secondary accent.
+// restrained olive as the secondary accent. Plain and quiet on purpose: colour does the work.
 export global Theme {
     // Surfaces, darkest to lightest
     out property <color> walnut-deep: #1c130e;
@@ -19,12 +19,11 @@ export global Theme {
     out property <color> copper: #c8743c;
     out property <color> copper-bright: #e08c54;
     out property <color> brass: #b89b57;
-    out property <color> olive: #7d8250;
+    out property <color> olive: #8c9158;
     out property <color> olive-dim: #4f5434;
 
-    // Type. Consolas ships with Windows; Georgia is the one serif used, for view titles only.
+    // Consolas ships with Windows; it is used only for times.
     out property <string> mono: "Consolas";
-    out property <string> serif: "Georgia";
 
-    out property <length> radius: 6px;
+    out property <length> radius: 8px;
 }

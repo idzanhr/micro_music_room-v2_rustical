@@ -9,12 +9,16 @@ export global AppState {
     // Library and navigation
     in property <[TrackRow]> rows;
     in property <[PlaylistItem]> playlists;
-    in property <int> view-index: -1; // -1 = all tracks, otherwise a playlist index
-    in property <string> view-title: "All tracks";
+    in property <int> view-index: -1; // -1 all songs, -2 recently added, 0.. a playlist
+    in property <string> breadcrumb: "YOUR LIBRARY  /  ALL SONGS";
+    in property <string> view-title: "All songs";
     in property <string> view-subtitle;
     in property <int> total-tracks;
+    in property <int> selected-count;
     in property <string> status;
     in property <bool> scanning;
+    in property <string> version;
+    in-out property <bool> about-open;
 
     // Player
     in property <bool> has-current;
@@ -32,12 +36,15 @@ export global AppState {
     callback select-view(int);
     callback search-edited(string);
     callback add-folder();
+    callback add-files();
     callback create-playlist(string);
     callback delete-playlist(int);
 
     // Track rows (row = index in the visible list)
+    callback select-row(int, bool, bool); // row, ctrl held, shift held
     callback play-row(int);
-    callback add-to-playlist(int, int);
+    callback play-all();
+    callback add-to-playlist(int, int); // row (-1 = the selection), playlist
     callback remove-from-playlist(int);
 
     // Player

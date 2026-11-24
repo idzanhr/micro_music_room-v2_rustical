@@ -5,54 +5,64 @@ import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { IconButton, Slider } from "widgets.slint";
 
-// The persistent bar along the bottom: now playing, transport controls with a seek bar, volume.
+// The persistent bar under the song list: now playing, transport controls with a seek bar, volume.
 export component PlayerBar inherits Rectangle {
-    height: 92px;
+    height: 96px;
     background: Theme.walnut;
 
     Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
         height: 1px;
         background: Theme.border;
     }
 
     HorizontalLayout {
         padding-left: 24px;
-        padding-right: 24px;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        padding-right: 28px;
+        padding-top: 12px;
+        padding-bottom: 12px;
         spacing: 24px;
 
-        // Now playing
-        VerticalLayout {
-            width: 26%;
-            alignment: center;
-            spacing: 3px;
+        // Now playing: an art tile, then the title and artist
+        HorizontalLayout {
+            width: 28%;
+            spacing: 14px;
 
-            if AppState.has-current: Text {
-                text: AppState.now-title;
-                color: Theme.parchment;
-                font-size: 15px;
-                font-weight: 600;
-                overflow: elide;
+            Rectangle {
+                width: 56px;
+                height: 56px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 10px;
+                background: Theme.walnut-raised;
+
+                Image {
+                    source: @image-url("icons/note.svg");
+                    width: 26px;
+                    height: 26px;
+                    colorize: AppState.has-current ? Theme.copper : Theme.parchment-faint;
+                }
             }
 
-            if AppState.has-current: Text {
-                text: AppState.now-artist;
-                color: Theme.parchment-dim;
-                font-size: 13px;
-                overflow: elide;
-            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 3px;
 
-            if !AppState.has-current: Text {
-                text: "Nothing playing";
-                color: Theme.parchment-faint;
-                font-size: 14px;
-            }
+                Text {
+                    text: AppState.has-current ? AppState.now-title : "Nothing playing";
+                    color: AppState.has-current ? Theme.parchment : Theme.parchment-dim;
+                    font-size: 14px;
+                    font-weight: 600;
+                    overflow: elide;
+                }
 
-            if !AppState.has-current: Text {
-                text: "Double-click a track to start";
-                color: Theme.parchment-faint;
-                font-size: 12px;
+                Text {
+                    text: AppState.has-current ? AppState.now-artist : "Pick a song to start listening";
+                    color: Theme.parchment-faint;
+                    font-size: 12px;
+                    overflow: elide;
+                }
             }
         }
 
@@ -60,11 +70,11 @@ export component PlayerBar inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 4px;
+            spacing: 6px;
 
             HorizontalLayout {
                 alignment: center;
-                spacing: 10px;
+                spacing: 12px;
 
                 IconButton {
                     icon: @image-url("icons/shuffle.svg");
@@ -87,6 +97,7 @@ export component PlayerBar inherits Rectangle {
                 IconButton {
                     icon: AppState.playing ? @image-url("icons/pause.svg") : @image-url("icons/play.svg");
                     prominent: true;
+                    square: true;
                     width: 44px;
                     height: 44px;
                     glyph: 20px;
@@ -116,7 +127,7 @@ export component PlayerBar inherits Rectangle {
             }
 
             HorizontalLayout {
-                spacing: 10px;
+                spacing: 12px;
 
                 Text {
                     text: AppState.elapsed;
@@ -125,7 +136,7 @@ export component PlayerBar inherits Rectangle {
                     font-size: 12px;
                     vertical-alignment: center;
                     horizontal-alignment: right;
-                    width: 48px;
+                    width: 44px;
                 }
 
                 Slider {
@@ -143,14 +154,14 @@ export component PlayerBar inherits Rectangle {
                     font-family: Theme.mono;
                     font-size: 12px;
                     vertical-alignment: center;
-                    width: 48px;
+                    width: 44px;
                 }
             }
         }
 
         // Volume
         HorizontalLayout {
-            width: 22%;
+            width: 20%;
             alignment: end;
             spacing: 10px;
 
@@ -164,7 +175,7 @@ export component PlayerBar inherits Rectangle {
 
             Slider {
                 value <=> AppState.volume;
-                width: 120px;
+                width: 130px;
                 y: (parent.height - self.height) / 2;
                 changed(v) => {
                     AppState.volume-changed(v);

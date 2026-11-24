@@ -2,34 +2,122 @@
 // Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
 
 import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
 import { Sidebar } from "sidebar.slint";
 import { TrackTable } from "tracks.slint";
 import { PlayerBar } from "player.slint";
+import { TextButton } from "widgets.slint";
 
 // The Rust side reaches the shared state and the row/playlist structs through these exports.
 export { AppState } from "state.slint";
 export { TrackRow, PlaylistItem } from "types.slint";
 
+component AboutDialog inherits Rectangle {
+    background: #000000b0;
+
+    // Clicking outside the panel closes it.
+    TouchArea {
+        clicked => {
+            AppState.about-open = false;
+        }
+    }
+
+    Rectangle {
+        width: 460px;
+        height: 300px;
+        border-radius: 12px;
+        background: Theme.walnut;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        // Swallow clicks so the panel itself does not close the dialog.
+        TouchArea {}
+
+        VerticalLayout {
+            padding: 28px;
+            spacing: 10px;
+
+            Text {
+                text: "micro music room";
+                color: Theme.parchment;
+                font-size: 20px;
+                font-weight: 700;
+            }
+
+            Text {
+                text: "Version \{AppState.version}";
+                color: Theme.brass;
+                font-size: 12px;
+            }
+
+            Text {
+                text: "A small, local-only music player for Windows. No accounts, no subscriptions, no streaming, no telemetry, no ads.";
+                color: Theme.parchment-dim;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+
+            Text {
+                text: "Free software, licensed under the GNU General Public License, version 3 or (at your option) any later version. You may use, study, share and change it under those terms. It comes with no warranty.";
+                color: Theme.parchment-dim;
+                font-size: 13px;
+                wrap: word-wrap;
+            }
+
+            Text {
+                text: "Source code: github.com/idzanhr/micro_music_room-v2_rustical";
+                color: Theme.olive;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+
+                TextButton {
+                    text: "Close";
+                    primary: true;
+                    clicked => {
+                        AppState.about-open = false;
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "Micro Music Room";
     icon: @image-url("icons/note.svg");
-    min-width: 920px;
-    min-height: 580px;
-    preferred-width: 1180px;
-    preferred-height: 720px;
+    min-width: 1040px;
+    min-height: 600px;
+    preferred-width: 1280px;
+    preferred-height: 760px;
     background: Theme.walnut-deep;
 
-    VerticalLayout {
-        HorizontalLayout {
-            vertical-stretch: 1;
+    // The sidebar runs the full height; the player sits under the song list only.
+    HorizontalLayout {
+        Sidebar {}
 
-            Sidebar {}
+        VerticalLayout {
+            horizontal-stretch: 1;
 
             TrackTable {
-                horizontal-stretch: 1;
+                vertical-stretch: 1;
             }
-        }
 
-        PlayerBar {}
+            PlayerBar {}
+        }
+    }
+
+    if AppState.about-open: AboutDialog {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        height: parent.height;
     }
 }

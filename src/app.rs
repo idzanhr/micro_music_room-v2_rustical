@@ -14,10 +14,12 @@ use micro_music_room::{
     model::{Browser, View, format_duration},
     queue::{Queue, Repeat, Rng},
     scan::{ScanResult, scan_folder},
-    track::Track,
+    track::{Track, is_supported},
 };
 use slint::{ComponentHandle, ModelRc, Timer, TimerMode, VecModel};
-use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::mpsc, time::Duration};
+use std::{
+    cell::RefCell, collections::BTreeSet, path::PathBuf, rc::Rc, sync::mpsc, time::Duration,
+};
 
 const PLAYBACK_NOTE: &str = "Playback isn't connected yet: the controls move the queue only.";
 
@@ -28,6 +30,10 @@ pub struct App {
     /// damaged file is never overwritten.
     can_save: bool,
     queue: Queue<PathBuf>,
+    /// Selected rows, as indexes into the visible list.
+    selection: BTreeSet<usize>,
+    /// The row a shift-click extends from.
+    anchor: Option<usize>,
     playing: bool,
     status: String,
     scanning: bool,
@@ -46,6 +52,8 @@ impl App {
             library_path,
             can_save,
             queue: Queue::new(Rng::from_time()),
+            selection: BTreeSet::new(),
+            anchor: None,
             playing: false,
             status,
             scanning: false,
@@ -80,13 +88,61 @@ impl App {
 
     // ---- user actions -------------------------------------------------------------------
 
+    fn clear_selection(&mut self) {
+        self.selection.clear();
+        self.anchor = None;
+    }
+
     fn select_view(&mut self, index: i32) {
-        let view = usize::try_from(index).map_or(View::AllTracks, View::Playlist);
+        let view = match index {
+            -1 => View::AllTracks,
+            -2 => View::Recent,
+            i => usize::try_from(i).map_or(View::AllTracks, View::Playlist),
+        };
         self.browser.set_view(view);
+        self.clear_selection();
     }
 
     fn search(&mut self, text: &str) {
         self.browser.set_search(text);
+        self.clear_selection();
+    }
+
+    /// Plain click selects one row, Ctrl toggles it, Shift extends from the last plain click.
+    fn select_row(&mut self, row: i32, ctrl: bool, shift: bool) {
+        let Ok(row) = usize::try_from(row) else {
+            return;
+        };
+        if row >= self.browser.visible().len() {
+            return;
+        }
+        if shift {
+            let from = self.anchor.unwrap_or(row);
+            let (lo, hi) = (from.min(row), from.max(row));
+            if !ctrl {
+                self.selection.clear();
+            }
+            self.selection.extend(lo..=hi);
+        } else if ctrl {
+            if !self.selection.remove(&row) {
+                self.selection.insert(row);
+            }
+            self.anchor = Some(row);
+        } else {
+            self.selection.clear();
+            self.selection.insert(row);
+            self.anchor = Some(row);
+        }
+    }
+
+    /// The rows an action applies to: `-1` is the selection; a row inside the selection means the
+    /// whole selection (as in Explorer); any other row means just that row.
+    fn rows_for(&self, row: i32) -> Vec<usize> {
+        match usize::try_from(row) {
+            Err(_) => self.selection.iter().copied().collect(),
+            Ok(r) if self.selection.contains(&r) => self.selection.iter().copied().collect(),
+            Ok(r) => vec![r],
+        }
     }
 
     fn play_row(&mut self, row: i32) {
@@ -100,6 +156,20 @@ impl App {
             return;
         };
         if self.queue.play(paths, Some(row)).is_some() {
+            self.playing = true;
+            self.status = PLAYBACK_NOTE.into();
+        }
+    }
+
+    /// Play everything in the list as shown. With shuffle on, the order is shuffled.
+    fn play_all(&mut self) {
+        let paths: Vec<PathBuf> = self
+            .browser
+            .visible()
+            .iter()
+            .map(|e| e.track.path.clone())
+            .collect();
+        if self.queue.play(paths, None).is_some() {
             self.playing = true;
             self.status = PLAYBACK_NOTE.into();
         }
@@ -133,6 +203,7 @@ impl App {
         match self.browser.create_playlist(name) {
             Some(index) => {
                 self.browser.set_view(View::Playlist(index));
+                self.clear_selection();
                 self.status = format!("Created the playlist “{}”.", name.trim());
                 self.save();
             }
@@ -145,34 +216,45 @@ impl App {
             return;
         };
         if self.browser.delete_playlist(index) {
-            self.status = "Playlist deleted. Your tracks are untouched.".into();
+            self.clear_selection();
+            self.status = "Playlist deleted. Your songs are untouched.".into();
             self.save();
         }
     }
 
     fn add_to_playlist(&mut self, row: i32, playlist: i32) {
-        let (Ok(row), Ok(playlist)) = (usize::try_from(row), usize::try_from(playlist)) else {
+        let Ok(playlist) = usize::try_from(playlist) else {
             return;
         };
-        let Some(path) = self
-            .browser
-            .visible()
-            .get(row)
-            .map(|e| e.track.path.clone())
-        else {
-            return;
+        let paths: Vec<PathBuf> = {
+            let visible = self.browser.visible();
+            self.rows_for(row)
+                .into_iter()
+                .filter_map(|r| visible.get(r).map(|e| e.track.path.clone()))
+                .collect()
         };
+        if paths.is_empty() {
+            return;
+        }
         let name = self
             .browser
             .playlist_names()
             .nth(playlist)
             .map(|(n, _)| n.to_owned())
             .unwrap_or_default();
-        if self.browser.add_to_playlist(playlist, &path) {
-            self.status = format!("Added to “{name}”.");
+        let added = paths
+            .iter()
+            .filter(|p| self.browser.add_to_playlist(playlist, p))
+            .count();
+        let songs = |n: usize| if n == 1 { "song" } else { "songs" };
+        self.status = match (added, paths.len() - added) {
+            (0, _) if paths.len() == 1 => format!("Already in “{name}”."),
+            (0, _) => format!("All {} songs were already in “{name}”.", paths.len()),
+            (n, 0) => format!("Added {n} {} to “{name}”.", songs(n)),
+            (n, dup) => format!("Added {n} {} to “{name}”, {dup} already there.", songs(n)),
+        };
+        if added > 0 {
             self.save();
-        } else {
-            self.status = format!("Already in “{name}”.");
         }
     }
 
@@ -180,17 +262,44 @@ impl App {
         let View::Playlist(playlist) = self.browser.view() else {
             return;
         };
-        let Ok(row) = usize::try_from(row) else {
-            return;
-        };
-        // The row is a position in the filtered view; map it back to the playlist entry.
-        let Some(&position) = self.browser.visible_positions().get(row) else {
-            return;
-        };
-        if self.browser.remove_from_playlist(playlist, position) {
-            self.status = "Removed from the playlist.".into();
+        // Rows are positions in the filtered view; map them back to playlist entries.
+        let positions = self.browser.visible_positions();
+        let mut targets: Vec<usize> = self
+            .rows_for(row)
+            .into_iter()
+            .filter_map(|r| positions.get(r).copied())
+            .collect();
+        // Highest first, so earlier removals don't shift the later ones.
+        targets.sort_unstable_by(|a, b| b.cmp(a));
+        let removed = targets
+            .into_iter()
+            .filter(|&p| self.browser.remove_from_playlist(playlist, p))
+            .count();
+        if removed > 0 {
+            self.clear_selection();
+            self.status = format!(
+                "Removed {removed} {} from the playlist.",
+                if removed == 1 { "song" } else { "songs" }
+            );
             self.save();
         }
+    }
+
+    /// Add individually chosen files. Anything that isn't a supported music file is ignored.
+    fn add_files(&mut self, files: Vec<PathBuf>) {
+        let found = files.iter().filter(|p| is_supported(p)).count();
+        if files.is_empty() {
+            return;
+        }
+        let added = self
+            .browser
+            .add_tracks(files.into_iter().filter(|p| is_supported(p)));
+        self.status = match (found, added) {
+            (0, _) => "None of those were music files this player supports.".into(),
+            (_, 0) => "Nothing new: those songs were already in your library.".into(),
+            (_, n) => format!("Added {n} {}.", if n == 1 { "song" } else { "songs" }),
+        };
+        self.save();
     }
 
     pub fn finish_scan(&mut self, result: ScanResult) {
@@ -241,11 +350,19 @@ impl App {
         let shown = visible.len();
         let rows: Vec<TrackRow> = visible
             .iter()
-            .map(|e| TrackRow {
+            .enumerate()
+            .map(|(i, e)| TrackRow {
                 title: e.track.title.as_str().into(),
-                artist: e.track.artist.as_str().into(),
-                folder: e.track.folder.as_str().into(),
+                artist: if e.track.artist.is_empty() {
+                    "—".into()
+                } else {
+                    e.track.artist.as_str().into()
+                },
+                // Real album tags come with tag reading; until then the folder stands in.
+                album: e.track.folder.as_str().into(),
+                duration: format_duration(None).as_str().into(),
                 playing: current == Some(&e.track.path),
+                selected: self.selection.contains(&i),
             })
             .collect();
         state.set_rows(ModelRc::new(VecModel::from(rows)));
@@ -253,26 +370,34 @@ impl App {
         let playlists: Vec<PlaylistItem> = self
             .browser
             .playlist_names()
-            .map(|(name, count)| PlaylistItem {
-                name: name.into(),
-                count: count as i32,
-            })
+            .map(|(name, _)| PlaylistItem { name: name.into() })
             .collect();
         state.set_playlists(ModelRc::new(VecModel::from(playlists)));
 
-        let (index, title) = match self.browser.view() {
-            View::AllTracks => (-1, "All tracks".to_owned()),
-            View::Playlist(i) => (
-                i as i32,
-                self.browser
+        let (index, title, crumb) = match self.browser.view() {
+            View::AllTracks => (
+                -1,
+                "All songs".to_owned(),
+                "YOUR LIBRARY  /  ALL SONGS".to_owned(),
+            ),
+            View::Recent => (
+                -2,
+                "Recently added".to_owned(),
+                "YOUR LIBRARY  /  RECENTLY ADDED".to_owned(),
+            ),
+            View::Playlist(i) => {
+                let name = self
+                    .browser
                     .playlist_names()
                     .nth(i)
                     .map(|(n, _)| n.to_owned())
-                    .unwrap_or_default(),
-            ),
+                    .unwrap_or_default();
+                let crumb = format!("PLAYLISTS  /  {}", name.to_uppercase());
+                (i as i32, name, crumb)
+            }
         };
         let in_view = self.browser.view_len();
-        let plural = |n: usize| if n == 1 { "track" } else { "tracks" };
+        let plural = |n: usize| if n == 1 { "song" } else { "songs" };
         let subtitle = if shown == in_view {
             format!("{in_view} {}", plural(in_view))
         } else {
@@ -280,8 +405,10 @@ impl App {
         };
         state.set_view_index(index);
         state.set_view_title(title.as_str().into());
+        state.set_breadcrumb(crumb.as_str().into());
         state.set_view_subtitle(subtitle.as_str().into());
         state.set_total_tracks(self.browser.track_count() as i32);
+        state.set_selected_count(self.selection.len() as i32);
         state.set_status(self.status.as_str().into());
         state.set_scanning(self.scanning);
 
@@ -308,6 +435,7 @@ impl App {
 pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
     app.borrow().refresh(ui);
     let state = ui.global::<AppState>();
+    state.set_version(env!("CARGO_PKG_VERSION").into());
     let weak = ui.as_weak();
 
     // Run a change, then redraw.
@@ -328,7 +456,11 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
 
     on!(on_select_view, |a, i| a.select_view(i));
     on!(on_search_edited, |a, text| a.search(&text));
+    on!(on_select_row, |a, row, ctrl, shift| a
+        .select_row(row, ctrl, shift));
     on!(on_play_row, |a, row| a.play_row(row));
+    on!(on_play_all, |a| a.play_all());
+    on!(on_add_files, |a| a.add_files(dialog::pick_files()));
     on!(on_toggle_play, |a| a.toggle_play());
     on!(on_next, |a| a.next());
     on!(on_previous, |a| a.previous());
@@ -421,13 +553,13 @@ mod tests {
         let state = ui.global::<AppState>();
         assert_eq!(row_titles(&ui), ["I dalje slušam", "Kapetan bez broda"]);
         assert_eq!(state.get_total_tracks(), 2);
-        assert_eq!(state.get_view_subtitle(), "2 tracks");
+        assert_eq!(state.get_view_subtitle(), "2 songs");
         assert_eq!(state.get_view_index(), -1);
 
         a.search("SLUSAM");
         a.refresh(&ui);
         assert_eq!(row_titles(&ui), ["I dalje slušam"]);
-        assert_eq!(state.get_view_subtitle(), "1 of 2 tracks");
+        assert_eq!(state.get_view_subtitle(), "1 of 2 songs");
     }
 
     #[test]
@@ -491,9 +623,119 @@ mod tests {
         a.create_playlist("P");
         a.select_view(-1);
         a.add_to_playlist(0, 0);
-        assert_eq!(a.status, "Added to “P”.");
+        assert_eq!(a.status, "Added 1 song to “P”.");
         a.add_to_playlist(0, 0);
         assert_eq!(a.status, "Already in “P”.");
+    }
+
+    #[test]
+    fn clicking_selects_ctrl_toggles_and_shift_extends() {
+        let ui = window();
+        let mut a = app(&["/m/1.mp3", "/m/2.mp3", "/m/3.mp3", "/m/4.mp3", "/m/5.mp3"]);
+        a.select_row(1, false, false);
+        a.select_row(3, false, true);
+        assert_eq!(a.selection.iter().copied().collect::<Vec<_>>(), [1, 2, 3]);
+        a.select_row(2, true, false);
+        assert_eq!(a.selection.iter().copied().collect::<Vec<_>>(), [1, 3]);
+        a.select_row(4, false, false);
+        assert_eq!(a.selection.iter().copied().collect::<Vec<_>>(), [4]);
+
+        a.refresh(&ui);
+        let state = ui.global::<AppState>();
+        assert_eq!(state.get_selected_count(), 1);
+
+        a.search("2");
+        assert!(a.selection.is_empty(), "a new search clears the selection");
+    }
+
+    #[test]
+    fn add_to_playlist_takes_the_whole_selection_and_skips_what_is_there() {
+        let mut a = app(&["/m/a.mp3", "/m/b.mp3", "/m/c.mp3"]);
+        a.create_playlist("P");
+        a.select_view(-1);
+        a.select_row(0, false, false);
+        a.select_row(1, true, false);
+        a.add_to_playlist(-1, 0);
+        assert_eq!(a.status, "Added 2 songs to “P”.");
+        a.select_row(2, true, false);
+        a.add_to_playlist(-1, 0);
+        assert_eq!(a.status, "Added 1 song to “P”, 2 already there.");
+        // A row outside the selection means just that row.
+        a.select_row(0, false, false);
+        a.add_to_playlist(2, 0);
+        assert_eq!(a.status, "Already in “P”.");
+    }
+
+    #[test]
+    fn removing_a_selection_from_a_playlist_removes_every_selected_entry() {
+        let ui = window();
+        let mut a = app(&[]);
+        a.create_playlist("P");
+        for p in ["/m/a.mp3", "/m/b.mp3", "/m/c.mp3", "/m/d.mp3"] {
+            a.browser.add_to_playlist(0, p.as_ref());
+        }
+        a.select_row(0, false, false);
+        a.select_row(2, true, false);
+        a.remove_from_playlist(2);
+        a.refresh(&ui);
+        assert_eq!(row_titles(&ui), ["b", "d"]);
+        assert_eq!(a.status, "Removed 2 songs from the playlist.");
+    }
+
+    #[test]
+    fn recently_added_view_and_breadcrumbs_reach_the_window() {
+        let ui = window();
+        let mut a = app(&["/m/old.mp3", "/m/new.mp3"]);
+        a.select_view(-2);
+        a.refresh(&ui);
+        let state = ui.global::<AppState>();
+        assert_eq!(row_titles(&ui), ["new", "old"]);
+        assert_eq!(state.get_view_index(), -2);
+        assert_eq!(state.get_view_title(), "Recently added");
+        assert_eq!(state.get_breadcrumb(), "YOUR LIBRARY  /  RECENTLY ADDED");
+
+        a.create_playlist("Road trip");
+        a.refresh(&ui);
+        assert_eq!(state.get_breadcrumb(), "PLAYLISTS  /  ROAD TRIP");
+    }
+
+    #[test]
+    fn play_all_starts_from_the_top_and_shuffles_when_asked() {
+        let ui = window();
+        let mut a = app(&["/m/1.mp3", "/m/2.mp3", "/m/3.mp3"]);
+        a.play_all();
+        a.refresh(&ui);
+        assert_eq!(ui.global::<AppState>().get_now_title(), "1");
+
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..40 {
+            let mut b = app(&["/m/1.mp3", "/m/2.mp3", "/m/3.mp3", "/m/4.mp3"]);
+            b.toggle_shuffle();
+            b.play_all();
+            seen.insert(b.queue.current().cloned());
+        }
+        assert!(
+            seen.len() > 1,
+            "shuffled play-all should not always start on row one"
+        );
+    }
+
+    #[test]
+    fn added_files_are_filtered_to_supported_music() {
+        let mut a = app(&["/m/old.mp3"]);
+        a.add_files(vec!["/m/new.flac".into(), "/m/cover.jpg".into()]);
+        assert_eq!(a.browser.track_count(), 2);
+        assert_eq!(a.status, "Added 1 song.");
+        a.add_files(vec!["/m/cover.jpg".into()]);
+        assert_eq!(
+            a.status,
+            "None of those were music files this player supports."
+        );
+        a.add_files(vec!["/m/NEW.FLAC".into()]);
+        assert_eq!(
+            a.status,
+            "Nothing new: those songs were already in your library."
+        );
     }
 
     #[test]

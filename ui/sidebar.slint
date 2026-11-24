@@ -4,34 +4,38 @@
 import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
-import { IconButton, TextButton } from "widgets.slint";
+import { IconButton } from "widgets.slint";
+
+component SectionLabel inherits Text {
+    color: Theme.parchment-faint;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+}
 
 component NavItem inherits Rectangle {
     in property <string> label;
-    in property <int> count;
+    in property <image> icon;
     in property <bool> selected;
     callback clicked();
 
-    height: 36px;
+    height: 38px;
     border-radius: Theme.radius;
-    background: root.selected ? Theme.walnut-raised : (touch.has-hover ? Theme.walnut-raised.with-alpha(0.5) : transparent);
+    background: root.selected ? Theme.walnut-raised : (touch.has-hover ? Theme.walnut-raised.with-alpha(0.55) : transparent);
     animate background { duration: 120ms; }
 
-    // Copper marker on the selected item
-    Rectangle {
-        visible: root.selected;
-        x: 0px;
-        y: 8px;
-        width: 3px;
-        height: parent.height - 16px;
-        border-radius: 2px;
-        background: Theme.copper;
-    }
-
     HorizontalLayout {
-        padding-left: 14px;
+        padding-left: 12px;
         padding-right: 12px;
-        spacing: 8px;
+        spacing: 10px;
+
+        if root.icon.width > 0: Image {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            y: (parent.height - self.height) / 2;
+            colorize: root.selected ? Theme.copper-bright : Theme.parchment-faint;
+        }
 
         Text {
             text: root.label;
@@ -40,15 +44,6 @@ component NavItem inherits Rectangle {
             font-weight: root.selected ? 600 : 400;
             vertical-alignment: center;
             overflow: elide;
-            horizontal-stretch: 1;
-        }
-
-        Text {
-            text: root.count;
-            color: Theme.parchment-faint;
-            font-family: Theme.mono;
-            font-size: 12px;
-            vertical-alignment: center;
         }
     }
 
@@ -63,87 +58,93 @@ component NavItem inherits Rectangle {
 export component Sidebar inherits Rectangle {
     in-out property <bool> creating;
 
-    width: 244px;
+    width: 236px;
     background: Theme.walnut;
 
     // A hairline between the sidebar and the content
     Rectangle {
         x: parent.width - 1px;
+        y: 0px;
         width: 1px;
+        height: parent.height;
         background: Theme.border;
     }
 
     VerticalLayout {
         padding: 18px;
-        padding-bottom: 16px;
-        spacing: 4px;
+        spacing: 2px;
 
         // Brand
         HorizontalLayout {
-            spacing: 10px;
-            padding-bottom: 18px;
+            spacing: 12px;
+            padding-bottom: 22px;
 
             Rectangle {
-                width: 32px;
-                height: 32px;
-                border-radius: 8px;
+                width: 38px;
+                height: 38px;
+                border-radius: 10px;
                 background: Theme.copper;
 
                 Image {
                     source: @image-url("icons/note.svg");
-                    width: 20px;
-                    height: 20px;
+                    width: 22px;
+                    height: 22px;
                     colorize: Theme.walnut-deep;
                 }
             }
 
             VerticalLayout {
                 alignment: center;
+                spacing: 2px;
 
                 Text {
-                    text: "Micro Music Room";
+                    text: "micro music room";
                     color: Theme.parchment;
-                    font-family: Theme.serif;
                     font-size: 15px;
                     font-weight: 700;
                 }
 
                 Text {
-                    text: "your local listening room";
+                    text: "YOUR MUSIC, YOUR WAY";
                     color: Theme.brass;
-                    font-size: 11px;
+                    font-size: 9px;
+                    font-weight: 600;
+                    letter-spacing: 0.8px;
                 }
             }
         }
 
-        Text {
-            text: "LIBRARY";
-            color: Theme.parchment-faint;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 1.2px;
+        SectionLabel {
+            text: "YOUR LIBRARY";
+            height: 24px;
+            vertical-alignment: center;
         }
 
         NavItem {
-            label: "All tracks";
-            count: AppState.total-tracks;
+            label: "All songs";
+            icon: @image-url("icons/library.svg");
             selected: AppState.view-index == -1;
             clicked => {
                 AppState.select-view(-1);
             }
         }
 
+        NavItem {
+            label: "Recently added";
+            icon: @image-url("icons/recent.svg");
+            selected: AppState.view-index == -2;
+            clicked => {
+                AppState.select-view(-2);
+            }
+        }
+
         // Playlists header with the "new" button
         HorizontalLayout {
-            padding-top: 16px;
+            padding-top: 18px;
             alignment: space-between;
 
-            Text {
+            SectionLabel {
                 text: "PLAYLISTS";
-                color: Theme.parchment-faint;
-                font-size: 11px;
-                font-weight: 600;
-                letter-spacing: 1.2px;
                 vertical-alignment: center;
             }
 
@@ -159,7 +160,7 @@ export component Sidebar inherits Rectangle {
         }
 
         if root.creating: Rectangle {
-            height: 36px;
+            height: 38px;
             border-radius: Theme.radius;
             background: Theme.walnut-deep;
             border-width: 1px;
@@ -176,6 +177,7 @@ export component Sidebar inherits Rectangle {
 
                 name-input := TextInput {
                     x: 12px;
+                    y: 0px;
                     width: parent.width - 24px;
                     height: parent.height;
                     color: Theme.parchment;
@@ -183,7 +185,6 @@ export component Sidebar inherits Rectangle {
                     selection-foreground-color: Theme.walnut-deep;
                     font-size: 14px;
                     vertical-alignment: center;
-                    single-line: true;
                     init => {
                         self.focus();
                     }
@@ -196,6 +197,8 @@ export component Sidebar inherits Rectangle {
 
             Text {
                 x: 12px;
+                y: 0px;
+                height: parent.height;
                 text: "Playlist name, then Enter";
                 color: Theme.parchment-faint;
                 font-size: 13px;
@@ -204,56 +207,78 @@ export component Sidebar inherits Rectangle {
             }
         }
 
-        // The playlists themselves; each has a right-click menu to delete it.
+        // The playlists; right-click one to delete it.
         ListView {
             vertical-stretch: 1;
 
-            for playlist[index] in AppState.playlists: ContextMenuArea {
-                Menu {
-                    MenuItem {
-                        title: "Delete playlist";
-                        activated => {
-                            AppState.delete-playlist(index);
+            for playlist[index] in AppState.playlists: Rectangle {
+                height: 38px;
+
+                ContextMenuArea {
+                    Menu {
+                        MenuItem {
+                            title: "Delete playlist";
+                            activated => {
+                                AppState.delete-playlist(index);
+                            }
+                        }
+                    }
+
+                    NavItem {
+                        label: playlist.name;
+                        selected: AppState.view-index == index;
+                        clicked => {
+                            AppState.select-view(index);
                         }
                     }
                 }
+            }
+        }
 
-                NavItem {
-                    label: playlist.name;
-                    count: playlist.count;
-                    selected: AppState.view-index == index;
-                    clicked => {
-                        AppState.select-view(index);
-                    }
+        // About, and the promise
+        Rectangle {
+            height: 40px;
+
+            Text {
+                text: "About & License";
+                color: about-touch.has-hover ? Theme.parchment : Theme.parchment-dim;
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            about-touch := TouchArea {
+                mouse-cursor: MouseCursor.pointer;
+                clicked => {
+                    AppState.about-open = true;
                 }
             }
         }
 
-        if AppState.playlists.length == 0 && !root.creating: Text {
-            text: "No playlists yet.\nPress + to make one.";
-            color: Theme.parchment-faint;
-            font-size: 12px;
-            vertical-stretch: 1;
-        }
+        Rectangle {
+            height: 88px;
+            border-radius: Theme.radius;
+            background: Theme.walnut-deep.with-alpha(0.55);
+            border-width: 1px;
+            border-color: Theme.olive-dim;
 
-        // Footer: add music, and what the last action did
-        VerticalLayout {
-            spacing: 10px;
-            padding-top: 10px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 4px;
+                alignment: center;
 
-            if AppState.status != "": Text {
-                text: AppState.status;
-                color: Theme.olive;
-                font-size: 12px;
-                wrap: word-wrap;
-            }
+                Text {
+                    text: "Your music stays yours";
+                    color: Theme.olive;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
 
-            TextButton {
-                text: AppState.scanning ? "Scanning…" : "Add folder";
-                icon: @image-url("icons/folder.svg");
-                enabled: !AppState.scanning;
-                clicked => {
-                    AppState.add-folder();
+                Text {
+                    text: "Playlists are saved on this PC. Your audio files stay in their original folders.";
+                    color: Theme.parchment-faint;
+                    font-size: 11px;
+                    wrap: word-wrap;
                 }
             }
         }

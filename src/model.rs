@@ -19,8 +19,13 @@ use std::{collections::HashSet, path::PathBuf};
 pub enum View {
     #[default]
     AllTracks,
+    /// The most recently added songs, newest first.
+    Recent,
     Playlist(usize),
 }
+
+/// How many songs "Recently added" shows.
+pub const RECENT_LIMIT: usize = 100;
 
 /// A track plus the lower-cased, accent-folded text that search matches against. Computed once at
 /// load so a keystroke over a 100k-song library is a plain substring scan.
@@ -126,6 +131,7 @@ impl Browser {
     pub fn view_len(&self) -> usize {
         match self.view {
             View::AllTracks => self.tracks.len(),
+            View::Recent => self.tracks.len().min(RECENT_LIMIT),
             View::Playlist(i) => self.playlist_entries[i].len(),
         }
     }
@@ -148,16 +154,17 @@ impl Browser {
     /// The rows to show: the current list narrowed by the search text. Every search word must
     /// appear somewhere in the title, artist or folder, in any order.
     pub fn visible(&self) -> Vec<&Entry> {
-        let source = match self.view {
-            View::AllTracks => &self.tracks,
-            View::Playlist(i) => &self.playlist_entries[i],
+        let source: Vec<&Entry> = match self.view {
+            View::AllTracks => self.tracks.iter().collect(),
+            View::Recent => self.tracks.iter().rev().take(RECENT_LIMIT).collect(),
+            View::Playlist(i) => self.playlist_entries[i].iter().collect(),
         };
         if self.search.is_empty() {
-            return source.iter().collect();
+            return source;
         }
         let words: Vec<&str> = self.search.split_whitespace().collect();
         source
-            .iter()
+            .into_iter()
             .filter(|e| words.iter().all(|w| e.key.contains(w)))
             .collect()
     }
@@ -377,6 +384,34 @@ mod tests {
         assert!(b.delete_playlist(1));
         assert_eq!(b.view(), View::AllTracks, "the viewed playlist is gone");
         assert!(!b.delete_playlist(7));
+    }
+
+    #[test]
+    fn recently_added_shows_the_newest_first_and_stops_at_the_limit() {
+        let paths: Vec<PathBuf> = (0..RECENT_LIMIT + 20)
+            .map(|i| PathBuf::from(format!("/m/song {i:03}.mp3")))
+            .collect();
+        let mut b = Browser::new(Library {
+            tracks: paths,
+            ..Library::default()
+        });
+        b.set_view(View::Recent);
+        let titles = titles(&b);
+        assert_eq!(titles.len(), RECENT_LIMIT);
+        assert_eq!(titles[0], "song 119", "the last one added comes first");
+        assert_eq!(b.view_len(), RECENT_LIMIT);
+
+        b.set_search("song 11");
+        assert_eq!(
+            b.visible().len(),
+            10,
+            "search narrows within the recent list"
+        );
+
+        // A new song lands at the top.
+        b.set_search("");
+        b.add_tracks([PathBuf::from("/m/brand new.mp3")]);
+        assert_eq!(b.visible()[0].track.title, "brand new");
     }
 
     #[test]

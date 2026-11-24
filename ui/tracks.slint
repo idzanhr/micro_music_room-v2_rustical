@@ -5,13 +5,14 @@ import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { AppState } from "state.slint";
 import { TrackRow } from "types.slint";
-import { IconButton, TextButton } from "widgets.slint";
+import { TextButton } from "widgets.slint";
 
 // Column geometry shared by the header and every row so they line up.
 global Columns {
-    out property <length> margin: 24px;
-    out property <length> number-w: 40px;
-    out property <length> gap: 14px;
+    out property <length> margin: 28px;
+    out property <length> icon-w: 24px;
+    out property <length> time-w: 64px;
+    out property <length> gap: 16px;
 }
 
 component SearchBox inherits Rectangle {
@@ -24,30 +25,33 @@ component SearchBox inherits Rectangle {
 
     Image {
         x: 12px;
+        y: (parent.height - self.height) / 2;
         source: @image-url("icons/search.svg");
-        width: 16px;
-        height: 16px;
+        width: 15px;
+        height: 15px;
         colorize: Theme.parchment-faint;
     }
 
     input := TextInput {
-        x: 38px;
-        width: parent.width - 38px - 38px;
+        x: 37px;
+        y: 0px;
+        width: parent.width - 37px - 36px;
         height: parent.height;
         color: Theme.parchment;
         selection-background-color: Theme.copper;
         selection-foreground-color: Theme.walnut-deep;
         font-size: 14px;
         vertical-alignment: center;
-        single-line: true;
         edited => {
             AppState.search-edited(self.text);
         }
     }
 
     Text {
-        x: 38px;
-        text: "Search title, artist or folder";
+        x: 37px;
+        y: 0px;
+        height: parent.height;
+        text: "Search songs";
         color: Theme.parchment-faint;
         font-size: 14px;
         vertical-alignment: center;
@@ -56,17 +60,17 @@ component SearchBox inherits Rectangle {
 
     // Clear button (a "+" turned into an "x")
     if input.text != "": Rectangle {
-        x: parent.width - 34px;
-        width: 26px;
-        height: 26px;
+        x: parent.width - 32px;
         y: (parent.height - self.height) / 2;
-        border-radius: 13px;
+        width: 24px;
+        height: 24px;
+        border-radius: 12px;
         background: clear-touch.has-hover ? Theme.walnut-raised : transparent;
 
         Image {
             source: @image-url("icons/plus.svg");
-            width: 14px;
-            height: 14px;
+            width: 13px;
+            height: 13px;
             colorize: Theme.parchment-dim;
             transform-rotation: 45deg;
         }
@@ -86,43 +90,26 @@ component TrackLine inherits Rectangle {
     in property <TrackRow> entry;
     in property <length> title-w;
     in property <length> artist-w;
-    in property <length> folder-w;
+    in property <length> album-w;
 
-    height: 38px;
-    background: root.entry.playing ? Theme.copper.with-alpha(0.14) : (touch.has-hover ? Theme.walnut.with-alpha(0.9) : (Math.mod(root.index, 2) == 1 ? Theme.walnut.with-alpha(0.35) : transparent));
-
-    // Copper marker on the track that is playing
-    Rectangle {
-        visible: root.entry.playing;
-        width: 3px;
-        background: Theme.copper;
-    }
-
-    // Number, or the note icon on the playing row
-    Text {
-        x: Columns.margin;
-        width: Columns.number-w;
-        visible: !root.entry.playing;
-        text: root.index + 1;
-        color: Theme.parchment-faint;
-        font-family: Theme.mono;
-        font-size: 12px;
-        vertical-alignment: center;
-        horizontal-alignment: left;
-    }
+    height: 42px;
+    background: root.entry.selected ? Theme.walnut-raised : (touch.has-hover ? Theme.walnut.with-alpha(0.8) : transparent);
+    animate background { duration: 90ms; }
 
     Image {
-        visible: root.entry.playing;
         x: Columns.margin;
+        y: (parent.height - self.height) / 2;
         source: @image-url("icons/note.svg");
         width: 16px;
         height: 16px;
-        colorize: Theme.copper-bright;
+        colorize: root.entry.playing ? Theme.copper-bright : Theme.parchment-faint;
     }
 
     Text {
-        x: Columns.margin + Columns.number-w + Columns.gap;
+        x: Columns.margin + Columns.icon-w + Columns.gap;
+        y: 0px;
         width: root.title-w;
+        height: parent.height;
         text: root.entry.title;
         color: root.entry.playing ? Theme.copper-bright : Theme.parchment;
         font-size: 14px;
@@ -132,8 +119,10 @@ component TrackLine inherits Rectangle {
     }
 
     Text {
-        x: Columns.margin + Columns.number-w + Columns.gap + root.title-w + Columns.gap;
+        x: Columns.margin + Columns.icon-w + Columns.gap + root.title-w + Columns.gap;
+        y: 0px;
         width: root.artist-w;
+        height: parent.height;
         text: root.entry.artist;
         color: Theme.parchment-dim;
         font-size: 13px;
@@ -142,120 +131,240 @@ component TrackLine inherits Rectangle {
     }
 
     Text {
-        x: Columns.margin + Columns.number-w + Columns.gap + root.title-w + Columns.gap + root.artist-w + Columns.gap;
-        width: root.folder-w;
-        text: root.entry.folder;
+        x: Columns.margin + Columns.icon-w + Columns.gap + root.title-w + Columns.gap + root.artist-w + Columns.gap;
+        y: 0px;
+        width: root.album-w;
+        height: parent.height;
+        text: root.entry.album;
         color: Theme.parchment-faint;
         font-size: 13px;
         vertical-alignment: center;
         overflow: elide;
     }
 
+    Text {
+        x: parent.width - Columns.margin - Columns.time-w;
+        y: 0px;
+        width: Columns.time-w;
+        height: parent.height;
+        text: root.entry.duration;
+        color: Theme.parchment-faint;
+        font-family: Theme.mono;
+        font-size: 12px;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+    }
+
     touch := TouchArea {
         mouse-cursor: MouseCursor.pointer;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                AppState.select-row(root.index, event.modifiers.control, event.modifiers.shift);
+            }
+        }
         double-clicked => {
             AppState.play-row(root.index);
         }
     }
 }
 
+component HeaderText inherits Text {
+    color: Theme.brass;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    vertical-alignment: center;
+}
+
 export component TrackTable inherits Rectangle {
     background: Theme.walnut-deep;
 
     // Width left for the three text columns once the fixed parts are taken out.
-    property <length> text-space: root.width - 2 * Columns.margin - Columns.number-w - 3 * Columns.gap;
+    property <length> text-space: root.width - 2 * Columns.margin - Columns.icon-w - Columns.time-w - 4 * Columns.gap;
     property <length> title-w: root.text-space * 0.42;
-    property <length> artist-w: root.text-space * 0.28;
-    property <length> folder-w: root.text-space - root.title-w - root.artist-w;
+    property <length> artist-w: root.text-space * 0.26;
+    property <length> album-w: root.text-space - root.title-w - root.artist-w;
 
     VerticalLayout {
-        // Title and search
-        HorizontalLayout {
-            padding-left: Columns.margin;
-            padding-right: Columns.margin;
-            padding-top: 22px;
-            padding-bottom: 16px;
-            spacing: 20px;
+        // Breadcrumb, search and the two add buttons
+        Rectangle {
+            height: 76px;
 
-            VerticalLayout {
-                horizontal-stretch: 1;
-                alignment: center;
+            HorizontalLayout {
+                padding-left: Columns.margin;
+                padding-right: Columns.margin;
+                spacing: 12px;
 
                 Text {
-                    text: AppState.view-title;
-                    color: Theme.parchment;
-                    font-family: Theme.serif;
-                    font-size: 26px;
-                    font-weight: 700;
+                    text: AppState.breadcrumb;
+                    color: Theme.parchment-faint;
+                    font-size: 11px;
+                    font-weight: 600;
+                    letter-spacing: 1px;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
                     overflow: elide;
                 }
 
-                Text {
-                    text: AppState.view-subtitle;
-                    color: Theme.brass;
-                    font-family: Theme.mono;
-                    font-size: 12px;
+                SearchBox {
+                    width: 240px;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                TextButton {
+                    text: AppState.scanning ? "Scanning…" : "Add folder";
+                    enabled: !AppState.scanning;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.add-folder();
+                    }
+                }
+
+                TextButton {
+                    text: "Add songs";
+                    icon: @image-url("icons/plus.svg");
+                    primary: true;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.add-files();
+                    }
                 }
             }
+        }
 
-            SearchBox {
-                width: 300px;
-                y: (parent.height - self.height) / 2;
+        // Title, count, and the two list actions
+        Rectangle {
+            height: 78px;
+
+            HorizontalLayout {
+                padding-left: Columns.margin;
+                padding-right: Columns.margin;
+                spacing: 12px;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 4px;
+
+                    Text {
+                        text: AppState.view-title;
+                        color: Theme.parchment;
+                        font-size: 30px;
+                        font-weight: 700;
+                        overflow: elide;
+                    }
+
+                    HorizontalLayout {
+                        alignment: start;
+                        spacing: 10px;
+
+                        Text {
+                            text: AppState.view-subtitle;
+                            color: Theme.parchment-dim;
+                            font-size: 13px;
+                        }
+
+                        if AppState.status != "": Text {
+                            text: AppState.status;
+                            color: Theme.olive;
+                            font-size: 13px;
+                            overflow: elide;
+                        }
+                    }
+                }
+
+                // "Add to playlist" opens a menu of playlists for the selected songs.
+                Rectangle {
+                    width: 160px;
+                    height: 38px;
+                    y: (parent.height - self.height) / 2;
+
+                    add-menu := ContextMenuArea {
+                        Menu {
+                            for playlist[p] in AppState.playlists: MenuItem {
+                                title: playlist.name;
+                                activated => {
+                                    AppState.add-to-playlist(-1, p);
+                                }
+                            }
+                        }
+                    }
+
+                    TextButton {
+                        width: parent.width;
+                        height: parent.height;
+                        text: "Add to playlist  ›";
+                        enabled: AppState.selected-count > 0 && AppState.playlists.length > 0;
+                        clicked => {
+                            add-menu.show({ x: 0px, y: parent.height });
+                        }
+                    }
+                }
+
+                TextButton {
+                    text: "Play all";
+                    icon: @image-url("icons/play.svg");
+                    primary: true;
+                    enabled: AppState.rows.length > 0;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.play-all();
+                    }
+                }
             }
         }
 
         // Column headings
         Rectangle {
-            height: 30px;
-            background: Theme.walnut.with-alpha(0.6);
+            height: 34px;
 
             Rectangle {
+                x: 0px;
                 y: parent.height - 1px;
+                width: parent.width;
                 height: 1px;
                 background: Theme.border;
             }
 
-            Text {
+            HeaderText {
                 x: Columns.margin;
-                width: Columns.number-w;
+                y: 0px;
+                width: Columns.icon-w;
+                height: parent.height;
                 text: "#";
-                color: Theme.brass;
-                font-family: Theme.mono;
-                font-size: 11px;
-                vertical-alignment: center;
             }
 
-            Text {
-                x: Columns.margin + Columns.number-w + Columns.gap;
+            HeaderText {
+                x: Columns.margin + Columns.icon-w + Columns.gap;
+                y: 0px;
                 width: root.title-w;
+                height: parent.height;
                 text: "TITLE";
-                color: Theme.brass;
-                font-family: Theme.mono;
-                font-size: 11px;
-                letter-spacing: 1px;
-                vertical-alignment: center;
             }
 
-            Text {
-                x: Columns.margin + Columns.number-w + Columns.gap + root.title-w + Columns.gap;
+            HeaderText {
+                x: Columns.margin + Columns.icon-w + Columns.gap + root.title-w + Columns.gap;
+                y: 0px;
                 width: root.artist-w;
+                height: parent.height;
                 text: "ARTIST";
-                color: Theme.brass;
-                font-family: Theme.mono;
-                font-size: 11px;
-                letter-spacing: 1px;
-                vertical-alignment: center;
             }
 
-            Text {
-                x: Columns.margin + Columns.number-w + Columns.gap + root.title-w + Columns.gap + root.artist-w + Columns.gap;
-                width: root.folder-w;
-                text: "FOLDER";
-                color: Theme.brass;
-                font-family: Theme.mono;
-                font-size: 11px;
-                letter-spacing: 1px;
-                vertical-alignment: center;
+            HeaderText {
+                x: Columns.margin + Columns.icon-w + Columns.gap + root.title-w + Columns.gap + root.artist-w + Columns.gap;
+                y: 0px;
+                width: root.album-w;
+                height: parent.height;
+                text: "ALBUM";
+            }
+
+            HeaderText {
+                x: parent.width - Columns.margin - Columns.time-w;
+                y: 0px;
+                width: Columns.time-w;
+                height: parent.height;
+                text: "TIME";
+                horizontal-alignment: right;
             }
         }
 
@@ -263,41 +372,45 @@ export component TrackTable inherits Rectangle {
         if AppState.rows.length > 0: ListView {
             vertical-stretch: 1;
 
-            for track[index] in AppState.rows: ContextMenuArea {
-                Menu {
-                    MenuItem {
-                        title: "Play";
-                        activated => {
-                            AppState.play-row(index);
-                        }
-                    }
-                    Menu {
-                        title: "Add to playlist";
-                        enabled: AppState.playlists.length > 0;
+            for track[index] in AppState.rows: Rectangle {
+                height: 42px;
 
-                        for playlist[p] in AppState.playlists: MenuItem {
-                            title: playlist.name;
-                            enabled: p != AppState.view-index;
+                ContextMenuArea {
+                    Menu {
+                        MenuItem {
+                            title: "Play";
                             activated => {
-                                AppState.add-to-playlist(index, p);
+                                AppState.play-row(index);
+                            }
+                        }
+                        Menu {
+                            title: "Add to playlist";
+                            enabled: AppState.playlists.length > 0;
+
+                            for playlist[p] in AppState.playlists: MenuItem {
+                                title: playlist.name;
+                                enabled: p != AppState.view-index;
+                                activated => {
+                                    AppState.add-to-playlist(index, p);
+                                }
+                            }
+                        }
+                        if AppState.view-index >= 0: MenuSeparator {}
+                        if AppState.view-index >= 0: MenuItem {
+                            title: "Remove from this playlist";
+                            activated => {
+                                AppState.remove-from-playlist(index);
                             }
                         }
                     }
-                    if AppState.view-index >= 0: MenuSeparator {}
-                    if AppState.view-index >= 0: MenuItem {
-                        title: "Remove from this playlist";
-                        activated => {
-                            AppState.remove-from-playlist(index);
-                        }
-                    }
-                }
 
-                TrackLine {
-                    index: index;
-                    entry: track;
-                    title-w: root.title-w;
-                    artist-w: root.artist-w;
-                    folder-w: root.folder-w;
+                    TrackLine {
+                        index: index;
+                        entry: track;
+                        title-w: root.title-w;
+                        artist-w: root.artist-w;
+                        album-w: root.album-w;
+                    }
                 }
             }
         }
@@ -309,41 +422,19 @@ export component TrackTable inherits Rectangle {
                 alignment: center;
                 spacing: 8px;
 
-                Image {
-                    source: @image-url("icons/note.svg");
-                    width: 44px;
-                    height: 44px;
-                    colorize: Theme.border;
-                }
-
                 Text {
-                    text: AppState.total-tracks == 0 ? "Your library is empty" : (AppState.view-index >= 0 ? "Nothing here yet" : "No tracks match your search");
+                    text: AppState.total-tracks == 0 ? "Your library is empty" : (AppState.view-index >= 0 ? "Nothing here yet" : "No songs match your search");
                     color: Theme.parchment-dim;
-                    font-family: Theme.serif;
                     font-size: 18px;
+                    font-weight: 600;
                     horizontal-alignment: center;
                 }
 
                 Text {
-                    text: AppState.total-tracks == 0 ? "Add a folder of music to start listening." : (AppState.view-index >= 0 ? "Right-click a track in All tracks and choose Add to playlist." : "Try fewer words. Accents don't matter: slusam finds slušam.");
+                    text: AppState.total-tracks == 0 ? "Use Add folder or Add songs to start listening." : (AppState.view-index >= 0 ? "Select songs in All songs, then use Add to playlist." : "Accents don't matter: slusam finds slušam.");
                     color: Theme.parchment-faint;
                     font-size: 13px;
                     horizontal-alignment: center;
-                }
-
-                if AppState.total-tracks == 0: Rectangle {
-                    height: 52px;
-
-                    TextButton {
-                        text: "Add folder";
-                        icon: @image-url("icons/folder.svg");
-                        width: 150px;
-                        y: 16px;
-                        enabled: !AppState.scanning;
-                        clicked => {
-                            AppState.add-folder();
-                        }
-                    }
                 }
             }
         }

@@ -27,8 +27,9 @@ pub struct Track {
 }
 
 impl Track {
-    /// Mirrors v1's `MakeTrack`: `Artist - Title.ext` splits on the first `" - "`;
-    /// otherwise the title is the file name and the artist is the parent folder name.
+    /// `Artist - Title.ext` splits on the first `" - "`. Otherwise the title is the file name and
+    /// the artist is left empty (the list shows a dash, as v1 does) until real tags are read. The
+    /// parent folder is kept separately and shows in the Album column.
     pub fn from_path(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let stem = path
@@ -42,7 +43,7 @@ impl Track {
             .unwrap_or_default();
         let (artist, title) = match stem.split_once(" - ") {
             Some((artist, title)) => (artist.trim().to_owned(), title.trim().to_owned()),
-            None => (folder.clone(), stem),
+            None => (String::new(), stem),
         };
         Self {
             path,
@@ -83,9 +84,10 @@ mod tests {
     }
 
     #[test]
-    fn without_a_separator_the_folder_is_the_artist() {
-        let t = Track::from_path("/music/Queen/Bohemian Rhapsody.mp3");
-        assert_eq!(t.artist, "Queen");
-        assert_eq!(t.title, "Bohemian Rhapsody");
+    fn without_a_separator_the_artist_is_empty_and_the_folder_is_kept() {
+        let t = Track::from_path("/music/Kerber/2002 - Slušaj mater/01. Intro.mp3");
+        assert_eq!(t.artist, "");
+        assert_eq!(t.title, "01. Intro");
+        assert_eq!(t.folder, "2002 - Slušaj mater");
     }
 }
