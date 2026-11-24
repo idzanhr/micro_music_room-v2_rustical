@@ -43,7 +43,7 @@ Rust 2024 (MSRV 1.95) · Slint 1.19 · rodio 0.23 (CPAL + Symphonia) · serde / 
 | Taskbar thumbnail buttons | Done: previous, play/pause, next under the taskbar preview |
 | Volume Mixer | Done: the app's slider and its Windows Volume Mixer slider are one control |
 | Portable zip | Done: see Download above |
-| MSIX packaging / Store update | Not started |
+| MSIX packaging / Store update | Package builds in CI (same identity as v1, unsigned for the Store, plus a test-signed copy). Not yet submitted. See [docs/STORE-UPDATE.md](docs/STORE-UPDATE.md) |
 
 ## Library compatibility
 
@@ -80,7 +80,7 @@ MMR_SAMPLES_DIR=/path/to/samples cargo test --test formats -- --nocapture
 
 ## Other open questions
 
-- Not yet done: MSIX package and Store submission, flyout progress bar, saving volume/shuffle/repeat between runs, searching by tag text (search matches file and folder names), reading WMA tags, and a real-world WMA test.
+- Not yet done: Store submission, flyout progress bar, saving volume/shuffle/repeat between runs, searching by tag text (search matches file and folder names), reading WMA tags, and a real-world WMA test.
 - The exe is unsigned, hence the SmartScreen prompt.
 
 ## Releasing
