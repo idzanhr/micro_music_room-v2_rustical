@@ -67,3 +67,7 @@ cargo test --lib
 cargo clippy --all-targets -- -D warnings
 cargo run
 ```
+
+## Credits
+
+The app icon is from [Icons8](https://icons8.com), used under their free licence with attribution.

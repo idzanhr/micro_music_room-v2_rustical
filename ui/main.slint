@@ -24,7 +24,7 @@ component AboutDialog inherits Rectangle {
 
     Rectangle {
         width: 460px;
-        height: 300px;
+        height: 330px;
         border-radius: 12px;
         background: Theme.walnut;
         border-width: 1px;
@@ -65,6 +65,13 @@ component AboutDialog inherits Rectangle {
             }
 
             Text {
+                text: "App icon from Icons8 (icons8.com), used under their free licence with attribution.";
+                color: Theme.parchment-faint;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            Text {
                 text: "Source code: github.com/idzanhr/micro_music_room-v2_rustical";
                 color: Theme.olive;
                 font-size: 12px;
@@ -92,7 +99,7 @@ component AboutDialog inherits Rectangle {
 
 export component MainWindow inherits Window {
     title: "Micro Music Room";
-    icon: @image-url("icons/note.svg");
+    icon: @image-url("icons/logo.png");
     min-width: 1040px;
     min-height: 600px;
     preferred-width: 1280px;
