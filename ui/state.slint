@@ -1,0 +1,51 @@
+// Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
+// Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
+
+import { TrackRow, PlaylistItem } from "types.slint";
+
+// Everything the window shows, and everything the user can ask for. The Rust side owns the real
+// state and pushes it in here; the components only read these properties and fire the callbacks.
+export global AppState {
+    // Library and navigation
+    in property <[TrackRow]> rows;
+    in property <[PlaylistItem]> playlists;
+    in property <int> view-index: -1; // -1 = all tracks, otherwise a playlist index
+    in property <string> view-title: "All tracks";
+    in property <string> view-subtitle;
+    in property <int> total-tracks;
+    in property <string> status;
+    in property <bool> scanning;
+
+    // Player
+    in property <bool> has-current;
+    in property <string> now-title;
+    in property <string> now-artist;
+    in property <bool> playing;
+    in property <bool> shuffle;
+    in property <int> repeat-mode; // 0 off, 1 all, 2 one
+    in property <string> elapsed: "0:00";
+    in property <string> total: "0:00";
+    in-out property <float> progress;
+    in-out property <float> volume: 0.8;
+
+    // Navigation and library
+    callback select-view(int);
+    callback search-edited(string);
+    callback add-folder();
+    callback create-playlist(string);
+    callback delete-playlist(int);
+
+    // Track rows (row = index in the visible list)
+    callback play-row(int);
+    callback add-to-playlist(int, int);
+    callback remove-from-playlist(int);
+
+    // Player
+    callback toggle-play();
+    callback next();
+    callback previous();
+    callback toggle-shuffle();
+    callback cycle-repeat();
+    callback seek(float);
+    callback volume-changed(float);
+}

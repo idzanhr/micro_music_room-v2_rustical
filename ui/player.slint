@@ -1,0 +1,175 @@
+// Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
+// Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
+
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { IconButton, Slider } from "widgets.slint";
+
+// The persistent bar along the bottom: now playing, transport controls with a seek bar, volume.
+export component PlayerBar inherits Rectangle {
+    height: 92px;
+    background: Theme.walnut;
+
+    Rectangle {
+        height: 1px;
+        background: Theme.border;
+    }
+
+    HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 24px;
+
+        // Now playing
+        VerticalLayout {
+            width: 26%;
+            alignment: center;
+            spacing: 3px;
+
+            if AppState.has-current: Text {
+                text: AppState.now-title;
+                color: Theme.parchment;
+                font-size: 15px;
+                font-weight: 600;
+                overflow: elide;
+            }
+
+            if AppState.has-current: Text {
+                text: AppState.now-artist;
+                color: Theme.parchment-dim;
+                font-size: 13px;
+                overflow: elide;
+            }
+
+            if !AppState.has-current: Text {
+                text: "Nothing playing";
+                color: Theme.parchment-faint;
+                font-size: 14px;
+            }
+
+            if !AppState.has-current: Text {
+                text: "Double-click a track to start";
+                color: Theme.parchment-faint;
+                font-size: 12px;
+            }
+        }
+
+        // Transport and seek bar
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 10px;
+
+                IconButton {
+                    icon: @image-url("icons/shuffle.svg");
+                    active: AppState.shuffle;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.toggle-shuffle();
+                    }
+                }
+
+                IconButton {
+                    icon: @image-url("icons/prev.svg");
+                    enabled: AppState.has-current;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.previous();
+                    }
+                }
+
+                IconButton {
+                    icon: AppState.playing ? @image-url("icons/pause.svg") : @image-url("icons/play.svg");
+                    prominent: true;
+                    width: 44px;
+                    height: 44px;
+                    glyph: 20px;
+                    enabled: AppState.has-current;
+                    clicked => {
+                        AppState.toggle-play();
+                    }
+                }
+
+                IconButton {
+                    icon: @image-url("icons/next.svg");
+                    enabled: AppState.has-current;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.next();
+                    }
+                }
+
+                IconButton {
+                    icon: AppState.repeat-mode == 2 ? @image-url("icons/repeat-one.svg") : @image-url("icons/repeat.svg");
+                    active: AppState.repeat-mode != 0;
+                    y: (parent.height - self.height) / 2;
+                    clicked => {
+                        AppState.cycle-repeat();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+
+                Text {
+                    text: AppState.elapsed;
+                    color: Theme.parchment-dim;
+                    font-family: Theme.mono;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    horizontal-alignment: right;
+                    width: 48px;
+                }
+
+                Slider {
+                    value <=> AppState.progress;
+                    enabled: AppState.has-current;
+                    horizontal-stretch: 1;
+                    changed(v) => {
+                        AppState.seek(v);
+                    }
+                }
+
+                Text {
+                    text: AppState.total;
+                    color: Theme.parchment-dim;
+                    font-family: Theme.mono;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    width: 48px;
+                }
+            }
+        }
+
+        // Volume
+        HorizontalLayout {
+            width: 22%;
+            alignment: end;
+            spacing: 10px;
+
+            Image {
+                source: @image-url("icons/volume.svg");
+                width: 18px;
+                height: 18px;
+                y: (parent.height - self.height) / 2;
+                colorize: Theme.parchment-dim;
+            }
+
+            Slider {
+                value <=> AppState.volume;
+                width: 120px;
+                y: (parent.height - self.height) / 2;
+                changed(v) => {
+                    AppState.volume-changed(v);
+                }
+            }
+        }
+    }
+}

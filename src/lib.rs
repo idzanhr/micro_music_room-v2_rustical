@@ -6,6 +6,7 @@
 
 pub mod decode;
 pub mod library;
+pub mod model;
 pub mod queue;
 pub mod scan;
 pub mod track;

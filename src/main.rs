@@ -3,22 +3,17 @@
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use micro_music_room::library::{Library, default_library_path};
+mod app;
+mod dialog;
+
 use slint::ComponentHandle;
+use std::{cell::RefCell, rc::Rc};
 
 slint::include_modules!();
 
 fn main() -> Result<(), slint::PlatformError> {
-    // Read-only: the v1 library is loaded but never written during migration.
-    if let Some(path) = default_library_path() {
-        match Library::load(&path) {
-            Ok(lib) => eprintln!(
-                "library: {} tracks, {} playlists",
-                lib.tracks.len(),
-                lib.playlists.len()
-            ),
-            Err(e) => eprintln!("library: {e} (file left untouched)"),
-        }
-    }
-    MainWindow::new()?.run()
+    let ui = MainWindow::new()?;
+    // Kept alive for the whole run: it hands finished folder scans back to the UI thread.
+    let _scan_timer = app::wire(&ui, Rc::new(RefCell::new(app::App::load())));
+    ui.run()
 }

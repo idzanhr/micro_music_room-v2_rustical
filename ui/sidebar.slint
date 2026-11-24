@@ -1,0 +1,261 @@
+// Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
+// Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
+
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { IconButton, TextButton } from "widgets.slint";
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <int> count;
+    in property <bool> selected;
+    callback clicked();
+
+    height: 36px;
+    border-radius: Theme.radius;
+    background: root.selected ? Theme.walnut-raised : (touch.has-hover ? Theme.walnut-raised.with-alpha(0.5) : transparent);
+    animate background { duration: 120ms; }
+
+    // Copper marker on the selected item
+    Rectangle {
+        visible: root.selected;
+        x: 0px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: Theme.copper;
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 8px;
+
+        Text {
+            text: root.label;
+            color: root.selected ? Theme.parchment : Theme.parchment-dim;
+            font-size: 14px;
+            font-weight: root.selected ? 600 : 400;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        Text {
+            text: root.count;
+            color: Theme.parchment-faint;
+            font-family: Theme.mono;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component Sidebar inherits Rectangle {
+    in-out property <bool> creating;
+
+    width: 244px;
+    background: Theme.walnut;
+
+    // A hairline between the sidebar and the content
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Theme.border;
+    }
+
+    VerticalLayout {
+        padding: 18px;
+        padding-bottom: 16px;
+        spacing: 4px;
+
+        // Brand
+        HorizontalLayout {
+            spacing: 10px;
+            padding-bottom: 18px;
+
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: 8px;
+                background: Theme.copper;
+
+                Image {
+                    source: @image-url("icons/note.svg");
+                    width: 20px;
+                    height: 20px;
+                    colorize: Theme.walnut-deep;
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                Text {
+                    text: "Micro Music Room";
+                    color: Theme.parchment;
+                    font-family: Theme.serif;
+                    font-size: 15px;
+                    font-weight: 700;
+                }
+
+                Text {
+                    text: "your local listening room";
+                    color: Theme.brass;
+                    font-size: 11px;
+                }
+            }
+        }
+
+        Text {
+            text: "LIBRARY";
+            color: Theme.parchment-faint;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1.2px;
+        }
+
+        NavItem {
+            label: "All tracks";
+            count: AppState.total-tracks;
+            selected: AppState.view-index == -1;
+            clicked => {
+                AppState.select-view(-1);
+            }
+        }
+
+        // Playlists header with the "new" button
+        HorizontalLayout {
+            padding-top: 16px;
+            alignment: space-between;
+
+            Text {
+                text: "PLAYLISTS";
+                color: Theme.parchment-faint;
+                font-size: 11px;
+                font-weight: 600;
+                letter-spacing: 1.2px;
+                vertical-alignment: center;
+            }
+
+            IconButton {
+                icon: @image-url("icons/plus.svg");
+                glyph: 14px;
+                width: 26px;
+                height: 26px;
+                clicked => {
+                    root.creating = true;
+                }
+            }
+        }
+
+        if root.creating: Rectangle {
+            height: 36px;
+            border-radius: Theme.radius;
+            background: Theme.walnut-deep;
+            border-width: 1px;
+            border-color: Theme.copper;
+
+            FocusScope {
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        root.creating = false;
+                        return accept;
+                    }
+                    return reject;
+                }
+
+                name-input := TextInput {
+                    x: 12px;
+                    width: parent.width - 24px;
+                    height: parent.height;
+                    color: Theme.parchment;
+                    selection-background-color: Theme.copper;
+                    selection-foreground-color: Theme.walnut-deep;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    single-line: true;
+                    init => {
+                        self.focus();
+                    }
+                    accepted => {
+                        AppState.create-playlist(self.text);
+                        root.creating = false;
+                    }
+                }
+            }
+
+            Text {
+                x: 12px;
+                text: "Playlist name, then Enter";
+                color: Theme.parchment-faint;
+                font-size: 13px;
+                vertical-alignment: center;
+                visible: name-input.text == "";
+            }
+        }
+
+        // The playlists themselves; each has a right-click menu to delete it.
+        ListView {
+            vertical-stretch: 1;
+
+            for playlist[index] in AppState.playlists: ContextMenuArea {
+                Menu {
+                    MenuItem {
+                        title: "Delete playlist";
+                        activated => {
+                            AppState.delete-playlist(index);
+                        }
+                    }
+                }
+
+                NavItem {
+                    label: playlist.name;
+                    count: playlist.count;
+                    selected: AppState.view-index == index;
+                    clicked => {
+                        AppState.select-view(index);
+                    }
+                }
+            }
+        }
+
+        if AppState.playlists.length == 0 && !root.creating: Text {
+            text: "No playlists yet.\nPress + to make one.";
+            color: Theme.parchment-faint;
+            font-size: 12px;
+            vertical-stretch: 1;
+        }
+
+        // Footer: add music, and what the last action did
+        VerticalLayout {
+            spacing: 10px;
+            padding-top: 10px;
+
+            if AppState.status != "": Text {
+                text: AppState.status;
+                color: Theme.olive;
+                font-size: 12px;
+                wrap: word-wrap;
+            }
+
+            TextButton {
+                text: AppState.scanning ? "Scanning…" : "Add folder";
+                icon: @image-url("icons/folder.svg");
+                enabled: !AppState.scanning;
+                clicked => {
+                    AppState.add-folder();
+                }
+            }
+        }
+    }
+}

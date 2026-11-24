@@ -1,44 +1,35 @@
 // Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
 // Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
 
-// "Rustic listening room": walnut surfaces, parchment text, copper and brass accents, olive secondary.
-global Palette {
-    out property <color> walnut-deep: #1c130e;
-    out property <color> walnut: #2a1d15;
-    out property <color> walnut-raised: #38281d;
-    out property <color> border: #4a3626;
-    out property <color> parchment: #efe3cc;
-    out property <color> parchment-dim: #b9a98c;
-    out property <color> copper: #c8743c;
-    out property <color> brass: #b89b57;
-    out property <color> olive: #7d8250;
-}
+import { Theme } from "theme.slint";
+import { Sidebar } from "sidebar.slint";
+import { TrackTable } from "tracks.slint";
+import { PlayerBar } from "player.slint";
+
+// The Rust side reaches the shared state and the row/playlist structs through these exports.
+export { AppState } from "state.slint";
+export { TrackRow, PlaylistItem } from "types.slint";
 
 export component MainWindow inherits Window {
     title: "Micro Music Room";
-    min-width: 900px;
-    min-height: 560px;
-    preferred-width: 1100px;
-    preferred-height: 680px;
-    background: Palette.walnut-deep;
+    icon: @image-url("icons/note.svg");
+    min-width: 920px;
+    min-height: 580px;
+    preferred-width: 1180px;
+    preferred-height: 720px;
+    background: Theme.walnut-deep;
 
-    // Placeholder shell: sidebar, track area and the persistent bottom player come next.
-    HorizontalLayout {
-        Rectangle {
-            width: 220px;
-            background: Palette.walnut;
-            Text {
-                text: "Library";
-                color: Palette.brass;
-                font-size: 14px;
+    VerticalLayout {
+        HorizontalLayout {
+            vertical-stretch: 1;
+
+            Sidebar {}
+
+            TrackTable {
+                horizontal-stretch: 1;
             }
         }
-        Rectangle {
-            Text {
-                text: "Micro Music Room";
-                color: Palette.parchment;
-                font-size: 22px;
-            }
-        }
+
+        PlayerBar {}
     }
 }

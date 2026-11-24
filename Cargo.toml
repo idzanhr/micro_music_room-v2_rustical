@@ -23,6 +23,9 @@ serde_json = "1"
 slint = "1.19"
 walkdir = "2"
 
+[dev-dependencies]
+i-slint-backend-testing = "1.19"
+
 [build-dependencies]
 slint-build = "1.19"
 
@@ -32,4 +35,4 @@ codegen-units = 1
 strip = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell"] }

@@ -188,14 +188,22 @@ impl<T: Clone + PartialEq> Queue<T> {
         self.current.as_ref()
     }
 
-    /// Step back through what was actually played. With no history, returns the current track so
-    /// the caller can restart it.
+    /// Step back. Shuffled, that means back through what was actually played. In list order it is
+    /// the track above the current one, even when playback started in the middle of the list.
+    /// With nothing earlier, the current track is returned so the caller can restart it.
     pub fn previous(&mut self) -> Option<&T> {
         if let Some(prev) = self.played.pop() {
             if let Some(cur) = self.current.take() {
                 self.upcoming.insert(0, cur);
             }
             self.current = Some(prev);
+        } else if !self.shuffle
+            && let Some(cur) = self.current.clone()
+            && let Some(i) = self.source.iter().position(|t| *t == cur)
+            && i > 0
+        {
+            self.upcoming.insert(0, cur);
+            self.current = Some(self.source[i - 1].clone());
         }
         self.current.as_ref()
     }
@@ -332,6 +340,21 @@ mod tests {
         // Going forward again replays the same order.
         assert_eq!(q.next(false), Some(&b));
         assert_eq!(q.next(false), Some(&c));
+    }
+
+    #[test]
+    fn previous_in_list_order_steps_to_the_track_above_even_after_starting_mid_list() {
+        let mut q = queue(false, 1);
+        q.play((0..5).collect(), Some(2));
+        assert_eq!(q.previous(), Some(&1));
+        assert_eq!(q.previous(), Some(&0));
+        assert_eq!(
+            q.previous(),
+            Some(&0),
+            "top of the list: stays so the caller can restart it"
+        );
+        // Going forward again picks up in order, nothing skipped or repeated.
+        assert_eq!(drain(&mut q), [0, 1, 2, 3, 4]);
     }
 
     #[test]

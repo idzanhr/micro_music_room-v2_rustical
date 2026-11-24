@@ -1,0 +1,30 @@
+// Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
+// Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
+
+// "Rustic listening room": walnut surfaces, parchment text, copper and aged-brass accents, with a
+// restrained olive as the secondary accent.
+export global Theme {
+    // Surfaces, darkest to lightest
+    out property <color> walnut-deep: #1c130e;
+    out property <color> walnut: #2a1d15;
+    out property <color> walnut-raised: #38281d;
+    out property <color> border: #4a3626;
+
+    // Text
+    out property <color> parchment: #efe3cc;
+    out property <color> parchment-dim: #bcac90;
+    out property <color> parchment-faint: #9a8b72;
+
+    // Accents
+    out property <color> copper: #c8743c;
+    out property <color> copper-bright: #e08c54;
+    out property <color> brass: #b89b57;
+    out property <color> olive: #7d8250;
+    out property <color> olive-dim: #4f5434;
+
+    // Type. Consolas ships with Windows; Georgia is the one serif used, for view titles only.
+    out property <string> mono: "Consolas";
+    out property <string> serif: "Georgia";
+
+    out property <length> radius: 6px;
+}
