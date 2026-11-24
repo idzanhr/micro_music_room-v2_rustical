@@ -1,0 +1,6 @@
+target/
+publish/
+store-package/
+.vs/
+*.user
+*.suo

@@ -1,0 +1,6 @@
+// Micro Music Room v2. Copyright (C) 2026 Marko Idžan. Licensed under GPL-3.0-or-later.
+// Rewritten in Rust from Micro Music Room (WPF) 1.0.3. Modified November 24, 2026.
+
+fn main() {
+    slint_build::compile("ui/main.slint").expect("failed to compile the Slint UI");
+}
