@@ -2730,6 +2730,7 @@ dependencies = [
  "i-slint-backend-testing",
  "image",
  "lofty",
+ "raw-window-handle",
  "rodio",
  "serde",
  "serde_json",
@@ -4236,6 +4237,7 @@ dependencies = [
  "i-slint-renderer-software",
  "once_cell",
  "pin-weak",
+ "raw-window-handle",
  "slint-macros",
  "vtable",
 ]

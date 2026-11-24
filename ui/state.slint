@@ -19,6 +19,7 @@ export global AppState {
     in property <bool> scanning;
     in property <string> version;
     in-out property <bool> about-open;
+    in property <bool> notifications; // notify when the song changes
 
     // Player
     in property <bool> has-current;
@@ -59,4 +60,5 @@ export global AppState {
     callback cycle-repeat();
     callback seek(float);
     callback volume-changed(float);
+    callback notifications-changed(bool);
 }

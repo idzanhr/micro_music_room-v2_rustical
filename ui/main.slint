@@ -24,7 +24,7 @@ component AboutDialog inherits Rectangle {
 
     Rectangle {
         width: 460px;
-        height: 330px;
+        height: 370px;
         border-radius: 12px;
         background: Theme.walnut;
         border-width: 1px;
@@ -76,6 +76,48 @@ component AboutDialog inherits Rectangle {
                 color: Theme.olive;
                 font-size: 12px;
                 wrap: word-wrap;
+            }
+
+            // Notification switch
+            Rectangle {
+                height: 30px;
+
+                HorizontalLayout {
+                    spacing: 10px;
+
+                    Rectangle {
+                        width: 36px;
+                        height: 20px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 10px;
+                        background: AppState.notifications ? Theme.copper : Theme.border;
+                        animate background { duration: 120ms; }
+
+                        Rectangle {
+                            width: 14px;
+                            height: 14px;
+                            y: 3px;
+                            x: AppState.notifications ? 19px : 3px;
+                            border-radius: 7px;
+                            background: Theme.parchment;
+                            animate x { duration: 120ms; }
+                        }
+                    }
+
+                    Text {
+                        text: "Notify me when the song changes";
+                        color: Theme.parchment-dim;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                TouchArea {
+                    mouse-cursor: MouseCursor.pointer;
+                    clicked => {
+                        AppState.notifications-changed(!AppState.notifications);
+                    }
+                }
             }
 
             Rectangle {

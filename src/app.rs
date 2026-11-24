@@ -12,9 +12,11 @@ use crate::{AppState, MainWindow, PlaylistItem, TrackRow, dialog};
 use micro_music_room::{
     engine::{LoadError, Output, RodioOutput},
     library::{Library, default_library_path},
+    media::{MediaCommand, MediaSession, NowPlaying, NullMedia, Playback},
     model::{Browser, Entry, View, format_duration},
     queue::{Queue, Repeat, Rng},
     scan::{ScanResult, scan_folder},
+    settings::Settings,
     tags::{CacheEntry, Cover, Done, Job, TagCache, TagWorker, default_cache_path, key_of},
     track::{Track, is_supported},
 };
@@ -69,6 +71,15 @@ pub struct App {
     view_range: (usize, usize),
     cover: Option<Cover>,
     cover_dirty: Cell<bool>,
+    /// The system media layer: flyout, media keys, notifications.
+    media: Box<dyn MediaSession>,
+    /// What the media layer was last told, so it is only told again when something changed.
+    media_state: Option<Playback>,
+    media_dirty: bool,
+    /// The song a notification was last shown for, so repeating one song does not re-notify.
+    last_notified: Option<PathBuf>,
+    settings: Settings,
+    settings_path: Option<PathBuf>,
 }
 
 /// What a worker poll changed.
@@ -108,6 +119,12 @@ impl App {
             view_range: (0, 30),
             cover: None,
             cover_dirty: Cell::new(false),
+            media: Box::new(NullMedia),
+            media_state: None,
+            media_dirty: false,
+            last_notified: None,
+            settings: Settings::default(),
+            settings_path: None,
         }
     }
 
@@ -123,6 +140,13 @@ impl App {
             .or_else(default_cache_path);
         if let Some(path) = &app.cache_path {
             app.tags = TagCache::load(path);
+        }
+        app.settings_path = app
+            .cache_path
+            .as_ref()
+            .map(|p| p.with_file_name("settings.json"));
+        if let Some(path) = &app.settings_path {
+            app.settings = Settings::load(path);
         }
         app
     }
@@ -253,6 +277,8 @@ impl App {
                     self.worker.request(Job::Cover(path.clone()));
                     self.loaded = Some(path);
                     self.playing = true;
+                    self.media_dirty = true;
+                    self.publish_now_playing();
                     return;
                 }
                 Err(error) => {
@@ -278,6 +304,8 @@ impl App {
         self.loaded = None;
         self.length = None;
         self.playing = false;
+        self.media_dirty = true;
+        self.media.set_now_playing(None);
     }
 
     fn toggle_play(&mut self) {
@@ -322,10 +350,17 @@ impl App {
         let Some(length) = self.length.filter(|_| self.loaded.is_some()) else {
             return;
         };
-        let target = length.mul_f32(fraction.clamp(0.0, 1.0));
+        self.seek_to(length.mul_f32(fraction.clamp(0.0, 1.0)));
+    }
+
+    fn seek_to(&mut self, target: Duration) {
+        if self.loaded.is_none() {
+            return;
+        }
         if let Err(e) = self.output.seek(target) {
             self.status = format!("Couldn't seek in this file: {e}");
         }
+        self.media_dirty = true;
     }
 
     fn set_volume(&mut self, slider: f32) {
@@ -573,6 +608,10 @@ impl App {
                         self.cover = cover;
                         self.cover_dirty.set(true);
                         polled.cover = true;
+                        // The song's tags and cover are all here now: update the flyout, and
+                        // announce the song if it is new.
+                        self.publish_now_playing();
+                        self.announce(&path);
                     }
                 }
             }
@@ -602,6 +641,91 @@ impl App {
             }
         }
         self.refresh_player(ui);
+    }
+
+    /// What the system flyout and notifications should say about the current song.
+    fn now_playing(&self) -> Option<NowPlaying> {
+        let path = self.queue.current()?;
+        let fallback = Track::from_path(path.clone());
+        let tags = self.tags.tags(path);
+        let pick = |tag: Option<&str>, fallback: &str| {
+            tag.filter(|t| !t.is_empty()).unwrap_or(fallback).to_owned()
+        };
+        Some(NowPlaying {
+            title: pick(tags.map(|t| t.title.as_str()), &fallback.title),
+            artist: pick(tags.map(|t| t.artist.as_str()), &fallback.artist),
+            album: tags.map_or(String::new(), |t| t.album.clone()),
+            cover_png: self.cover.as_ref().and_then(Cover::to_png),
+            length: self.length,
+        })
+    }
+
+    fn publish_now_playing(&mut self) {
+        let now = self.now_playing();
+        self.media.set_now_playing(now.as_ref());
+    }
+
+    /// Show the track-change notification, once per song and only if the user wants them.
+    fn announce(&mut self, path: &PathBuf) {
+        if !self.settings.notifications || self.last_notified.as_ref() == Some(path) {
+            return;
+        }
+        self.last_notified = Some(path.clone());
+        if let Some(now) = self.now_playing() {
+            self.media.notify_track_change(&now);
+        }
+    }
+
+    /// Carry out what media keys, headset buttons and the flyout asked for. Returns true if
+    /// anything was done, so the window should be redrawn.
+    pub fn poll_media(&mut self) -> bool {
+        let commands = self.media.take_commands();
+        let acted = !commands.is_empty();
+        for command in commands {
+            match command {
+                MediaCommand::Play if !self.playing => self.toggle_play(),
+                MediaCommand::Pause if self.playing => self.toggle_play(),
+                MediaCommand::Play | MediaCommand::Pause => {}
+                MediaCommand::Next => self.next(),
+                MediaCommand::Previous => self.previous(),
+                MediaCommand::Stop => self.stop(),
+                MediaCommand::Seek(to) => self.seek_to(to),
+            }
+        }
+        acted
+    }
+
+    /// Keep the system's play/pause state and timeline in step with the player. Cheap: it only
+    /// talks to the system when the state changed or a jump (start, seek) happened.
+    pub fn sync_media(&mut self) {
+        let state = match (self.loaded.is_some(), self.playing) {
+            (false, _) => Playback::Stopped,
+            (true, true) => Playback::Playing,
+            (true, false) => Playback::Paused,
+        };
+        if self.media_dirty || self.media_state != Some(state) {
+            self.media
+                .set_playback(state, self.output.position(), self.length);
+            self.media_state = Some(state);
+            self.media_dirty = false;
+        }
+    }
+
+    /// Connect the system media layer. Done once, after the window exists.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub fn attach_media(&mut self, media: Box<dyn MediaSession>) {
+        self.media = media;
+        self.media_dirty = true;
+        self.publish_now_playing();
+    }
+
+    fn set_notifications(&mut self, on: bool) {
+        self.settings.notifications = on;
+        if let Some(path) = &self.settings_path
+            && let Err(e) = self.settings.save(path)
+        {
+            self.status = format!("Couldn't save your settings: {e}");
+        }
     }
 
     /// Write the tag cache if it changed and it has been a while (or `force`).
@@ -736,6 +860,7 @@ impl App {
                 .into(),
         );
         state.set_volume(self.volume);
+        state.set_notifications(self.settings.notifications);
     }
 }
 
@@ -793,6 +918,7 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
         .remove_from_playlist(row));
     on!(on_volume_changed, |a, v| a.set_volume(v));
     on!(on_seek, |a, f| a.seek(f));
+    on!(on_notifications_changed, |a, on| a.set_notifications(on));
 
     // Adding a folder: pick it, scan on a background thread, then merge on the UI thread.
     let (tx, rx) = mpsc::channel::<ScanResult>();
@@ -829,6 +955,8 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
             changed = true;
         }
         changed |= app.borrow_mut().tick();
+        changed |= app.borrow_mut().poll_media();
+        app.borrow_mut().sync_media();
         let polled = app.borrow_mut().poll_worker();
         app.borrow_mut().save_tags(false);
         let Some(ui) = weak.upgrade() else {
@@ -851,6 +979,7 @@ mod tests {
     use micro_music_room::{
         engine::{SilentOutput, SilentState},
         library::Playlist,
+        media::{MediaLog, RecordingMedia},
     };
 
     fn app(paths: &[&str]) -> App {
@@ -1391,6 +1520,142 @@ mod tests {
         a.refresh_player(&ui);
         assert!(!ui.global::<AppState>().get_has_cover());
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn media_app(paths: &[&str]) -> (App, Rc<RefCell<SilentState>>, Rc<RefCell<MediaLog>>) {
+        let (mut a, out) = playing_app(paths);
+        let (media, log) = RecordingMedia::new();
+        a.attach_media(Box::new(media));
+        (a, out, log)
+    }
+
+    #[test]
+    fn the_flyout_is_told_about_the_song_and_its_state() {
+        let (mut a, _out, log) = media_app(&["/m/Kerber - Slušaj mater.mp3", "/m/two.mp3"]);
+        a.play_row(0);
+        a.sync_media();
+        let now = log.borrow().now_playing.clone().expect("now playing");
+        assert_eq!(
+            (now.title.as_str(), now.artist.as_str()),
+            ("Slušaj mater", "Kerber")
+        );
+        assert_eq!(log.borrow().playback.map(|p| p.0), Some(Playback::Playing));
+
+        a.toggle_play();
+        a.sync_media();
+        assert_eq!(log.borrow().playback.map(|p| p.0), Some(Playback::Paused));
+
+        // Nothing changed: the system is not bothered again.
+        let updates = log.borrow().playback_updates;
+        a.sync_media();
+        a.sync_media();
+        assert_eq!(log.borrow().playback_updates, updates);
+
+        // A seek is a jump the timeline must hear about.
+        a.toggle_play();
+        a.seek(0.5);
+        a.sync_media();
+        let (_, position, length) = log.borrow().playback.unwrap();
+        assert_eq!((position, length), (secs(100), Some(secs(200))));
+    }
+
+    #[test]
+    fn stopping_clears_the_flyout() {
+        let (mut a, _out, log) = media_app(&["/m/one.mp3"]);
+        a.play_row(0);
+        a.stop();
+        a.sync_media();
+        assert!(log.borrow().now_playing.is_none());
+        assert_eq!(log.borrow().playback.map(|p| p.0), Some(Playback::Stopped));
+    }
+
+    #[test]
+    fn media_keys_and_headset_buttons_drive_the_player() {
+        let (mut a, out, log) = media_app(&["/m/one.mp3", "/m/two.mp3", "/m/three.mp3"]);
+        a.play_row(0);
+
+        log.borrow_mut().incoming = vec![MediaCommand::Pause];
+        assert!(a.poll_media());
+        assert!(!a.playing && out.borrow().paused);
+
+        // Pause again changes nothing, and Play resumes without reloading the file.
+        log.borrow_mut().incoming = vec![MediaCommand::Pause, MediaCommand::Play];
+        a.poll_media();
+        assert!(a.playing && !out.borrow().paused);
+        assert_eq!(out.borrow().loads, 1);
+
+        log.borrow_mut().incoming = vec![MediaCommand::Next];
+        a.poll_media();
+        assert_eq!(out.borrow().loaded.as_deref(), Some("/m/two.mp3".as_ref()));
+
+        log.borrow_mut().incoming = vec![MediaCommand::Seek(secs(42))];
+        a.poll_media();
+        assert_eq!(out.borrow().position, secs(42));
+
+        log.borrow_mut().incoming = vec![MediaCommand::Previous];
+        a.poll_media(); // 42 s in: restarts instead of going back
+        assert_eq!(out.borrow().position, Duration::ZERO);
+        log.borrow_mut().incoming = vec![MediaCommand::Previous];
+        a.poll_media();
+        assert_eq!(out.borrow().loaded.as_deref(), Some("/m/one.mp3".as_ref()));
+
+        log.borrow_mut().incoming = vec![MediaCommand::Stop];
+        a.poll_media();
+        assert!(!a.playing && out.borrow().loaded.is_none());
+        assert!(!a.poll_media(), "nothing queued, nothing to do");
+    }
+
+    #[test]
+    fn a_notification_comes_once_per_song_with_its_tags_and_cover() {
+        let dir = std::env::temp_dir().join(format!("mmr-toast-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let song = dir.join("a.wav");
+        tagged_wav(&song, "Faca (intro)", "Edo Maajka", "Slušaj mater", true);
+        let (mut a, _out, log) = media_app(&[song.to_str().unwrap()]);
+
+        a.play_row(0);
+        assert!(
+            log.borrow().notifications.is_empty(),
+            "waits for tags and cover"
+        );
+        poll_until(&mut a, |p| p.cover);
+        let toast = log.borrow().notifications[0].clone();
+        assert_eq!(toast.title, "Faca (intro)");
+        assert_eq!(toast.artist, "Edo Maajka");
+        assert_eq!(toast.album, "Slušaj mater");
+        assert!(toast.cover_png.is_some());
+        // The flyout got the same, cover included.
+        assert!(
+            log.borrow()
+                .now_playing
+                .as_ref()
+                .unwrap()
+                .cover_png
+                .is_some()
+        );
+
+        // The same song again (repeat one) is not announced twice.
+        a.play_row(0);
+        poll_until(&mut a, |p| p.cover);
+        assert_eq!(log.borrow().notifications.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn notifications_can_be_switched_off() {
+        let dir = std::env::temp_dir().join(format!("mmr-quiet-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let song = dir.join("a.wav");
+        tagged_wav(&song, "t", "a", "b", false);
+        let (mut a, _out, log) = media_app(&[song.to_str().unwrap()]);
+        a.settings_path = Some(dir.join("settings.json"));
+        a.set_notifications(false);
+        assert!(!Settings::load(&dir.join("settings.json")).notifications);
+
+        a.play_row(0);
+        poll_until(&mut a, |p| p.cover);
+        assert!(log.borrow().notifications.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

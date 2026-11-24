@@ -22,7 +22,7 @@ lofty = "0.25"
 rodio = { version = "0.23", default-features = false, features = ["playback", "flac", "mp3", "mp4", "wav"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-slint = "1.19"
+slint = { version = "1.19", features = ["raw-window-handle-06"] }
 walkdir = "2"
 
 [dev-dependencies]
@@ -40,4 +40,22 @@ codegen-units = 1
 strip = true
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }
+windows = { version = "0.62", features = [
+    "Data_Xml_Dom",
+    "Foundation",
+    "Media",
+    "Storage_Streams",
+    "UI_Notifications",
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_Storage_Packaging_Appx",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Registry",
+    "Win32_System_Variant",
+    "Win32_System_WinRT",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+raw-window-handle = "0.6"

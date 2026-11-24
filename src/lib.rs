@@ -7,11 +7,15 @@
 pub mod decode;
 pub mod engine;
 pub mod library;
+pub mod media;
 pub mod model;
 pub mod queue;
 pub mod scan;
+pub mod settings;
 pub mod tags;
 pub mod track;
+#[cfg(windows)]
+pub mod winmedia;
 #[cfg(windows)]
 pub mod wmf;
 

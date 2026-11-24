@@ -95,6 +95,16 @@ pub struct Cover {
     pub rgba: Vec<u8>,
 }
 
+impl Cover {
+    /// The picture as PNG file bytes, for APIs (the media flyout, notifications) that want a file.
+    pub fn to_png(&self) -> Option<Vec<u8>> {
+        let img = image::RgbaImage::from_raw(self.width, self.height, self.rgba.clone())?;
+        let mut out = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut out, image::ImageFormat::Png).ok()?;
+        Some(out.into_inner())
+    }
+}
+
 fn decode_cover(bytes: &[u8]) -> Option<Cover> {
     if bytes.is_empty() || bytes.len() > MAX_COVER_BYTES {
         return None;
@@ -321,6 +331,21 @@ fn work(jobs: Receiver<Job>, done: Sender<Done>) {
         // Covers first: the song that just started needs its art now.
         if let Some(i) = pending.iter().position(|j| matches!(j, Job::Cover(_))) {
             if let Job::Cover(path) = pending.remove(i) {
+                // The song that just started needs its text tags too (the flyout and the
+                // notification show them), so they are sent ahead of the cover.
+                if let Some(stamp) = stamp_of(&path) {
+                    let tags = read_tags(&path);
+                    if done
+                        .send(Done::Tags {
+                            path: path.clone(),
+                            stamp,
+                            tags,
+                        })
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
                 let cover = read_cover(&path);
                 if done.send(Done::Cover { path, cover }).is_err() {
                     return;
@@ -585,7 +610,7 @@ mod tests {
         // b was already cached with its current stamp, so nothing comes back for it: ask for
         // something else and expect that answer next.
         worker.request(Job::Cover(a.clone()));
-        let next = wait_for(&worker, |_| true);
+        let next = wait_for(&worker, |d| matches!(d, Done::Cover { .. }));
         assert!(matches!(next, Done::Cover { .. }), "{next:?}");
     }
 
