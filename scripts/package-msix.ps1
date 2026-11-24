@@ -59,6 +59,11 @@ function New-Logo([string]$name, [int]$size) {
     } finally { $g.Dispose(); $bitmap.Dispose() }
 }
 try {
+    # The plain names the manifest points at (there is no resources.pri, so these must exist) ...
+    New-Logo "StoreLogo.png" 50
+    New-Logo "Square44x44Logo.png" 44
+    New-Logo "Square150x150Logo.png" 150
+    # ... and sharper sizes that Windows picks by file name where it can.
     foreach ($s in 100, 200, 400) {
         New-Logo "StoreLogo.scale-$s.png" ([int](50 * $s / 100))
         New-Logo "Square44x44Logo.scale-$s.png" ([int](44 * $s / 100))
