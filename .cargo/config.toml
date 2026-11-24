@@ -1,0 +1,4 @@
+# Link the Visual C++ runtime into the exe, so it starts on a fresh Windows install without
+# needing the "VC++ Redistributable" to be installed first.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -30,6 +30,20 @@ jobs:
       - name: Release build (Windows)
         if: runner.os == 'Windows'
         run: cargo build --release
+      - name: Package zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist/MicroMusicRoom | Out-Null
+          Copy-Item target/release/MicroMusicRoom.exe, LICENSE, README.md dist/MicroMusicRoom/
+          Compress-Archive -Path dist/MicroMusicRoom -DestinationPath MicroMusicRoom-v2-windows-x64.zip
+      - name: Upload zip (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicroMusicRoom-v2-windows-x64
+          path: MicroMusicRoom-v2-windows-x64.zip
+          retention-days: 30
 
   msrv:
     name: MSRV 1.95
