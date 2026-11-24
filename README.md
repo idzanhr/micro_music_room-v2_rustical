@@ -18,7 +18,8 @@ Rust 2024 (MSRV 1.95) · Slint 1.19 · rodio 0.23 (CPAL + Symphonia) · serde / 
 | Queue: shuffle, history, repeat | Done and tested (fixes the v1 shuffle bug) |
 | Folder scan, file-name parsing | Done, tested |
 | Slint UI | Placeholder window with the palette only |
-| Playback (rodio) | Not started |
+| Decoding (rodio) | Verified for MP3, FLAC, WAV, M4A; WMA not supported yet |
+| Audio output | Not started |
 | SMTC, toasts, taskbar buttons, Volume Mixer entry | Not started |
 | MSIX packaging | Not started |
 
@@ -34,9 +35,29 @@ v1 stores `%LOCALAPPDATA%\MusicRoom\library.json`:
 - Saving (future) writes a temp file, keeps `library.v1.json.bak` once (the pristine original) and `library.json.bak` (previous version), then atomically replaces `library.json`.
 - Unknown fields are preserved across a save.
 
-## Known open questions (not claimed as working)
+## Format support (tested against real files, Nov 24 2026)
 
-- **Format parity.** v1 imports MP3, M4A, WAV, AAC, WMA and FLAC. Symphonia's support for each must be tested against real sample files before parity is claimed. **WMA in particular may need Windows Media Foundation.**
+Decode, audibility, duration and mid-file seek checked with `tests/formats.rs` (rodio 0.23 / Symphonia 0.5.5, on Linux):
+
+| Format | Result | Sample |
+|---|---|---|
+| MP3 | Works | real file, 320 kbps, embedded cover |
+| FLAC | Works | real file, 44.1 kHz, embedded cover |
+| WAV | Works | real file, 16-bit PCM |
+| M4A (AAC-LC) | Works | real file, 48 kHz. Peaks slightly above full scale (AAC decoder overshoot), so output will need a limiter or clamp |
+| AAC (raw ADTS) | Works | **synthetic** (made with ffmpeg from the WAV), not yet tried on a real file |
+| WMA | **Not supported** | **synthetic** (wmav2), fails to open: Symphonia has no ASF/WMA demuxer. Needs a Windows Media Foundation fallback |
+
+Not yet verified: playback to a real audio device, and anything on Windows itself (the tests ran on Linux). WMA from older or lossless encoders is untested.
+
+Run it on your own files (never committed, they are usually copyrighted):
+
+```
+MMR_SAMPLES_DIR=/path/to/samples cargo test --test formats -- --nocapture
+```
+
+## Other open questions
+
 - **Windows APIs** (SMTC, AppUserModelID, thumbnail buttons, audio session) are untested: development so far ran on Linux, so none of the Windows-only code has been compiled or run yet.
 
 ## Develop
