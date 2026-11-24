@@ -145,10 +145,10 @@ impl WmfSource {
             if flags & (MF_SOURCE_READERF_ENDOFSTREAM.0 as u32) != 0 {
                 self.ended = true;
             }
-            if let Some(sample) = sample {
-                if self.append(&sample).is_err() {
-                    self.ended = true;
-                }
+            if let Some(sample) = sample
+                && self.append(&sample).is_err()
+            {
+                self.ended = true;
             }
         }
     }
@@ -166,13 +166,17 @@ impl WmfSource {
                 match self.format {
                     Format::Float32 => self.buf.extend(
                         bytes
-                            .chunks_exact(4)
-                            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+                            .as_chunks::<4>()
+                            .0
+                            .iter()
+                            .map(|b| f32::from_le_bytes(*b)),
                     ),
                     Format::Pcm16 => self.buf.extend(
                         bytes
-                            .chunks_exact(2)
-                            .map(|b| f32::from(i16::from_le_bytes([b[0], b[1]])) / 32768.0),
+                            .as_chunks::<2>()
+                            .0
+                            .iter()
+                            .map(|b| f32::from(i16::from_le_bytes(*b)) / 32768.0),
                     ),
                 }
             }
