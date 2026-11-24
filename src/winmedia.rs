@@ -35,13 +35,15 @@ use windows::{
     Storage::Streams::{DataWriter, InMemoryRandomAccessStream, RandomAccessStreamReference},
     UI::Notifications::{ToastNotification, ToastNotificationManager},
     Win32::{
-        Foundation::{ERROR_INSUFFICIENT_BUFFER, HWND},
+        Foundation::{ERROR_INSUFFICIENT_BUFFER, HWND, PROPERTYKEY},
         Storage::Packaging::Appx::GetCurrentPackageFullName,
         System::{
             Com::{
                 CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
                 CoTaskMemAlloc, IPersistFile,
-                StructuredStorage::{PROPVARIANT, PROPVARIANT_0_0, PropVariantClear},
+                StructuredStorage::{
+                    PROPVARIANT, PROPVARIANT_0_0, PROPVARIANT_0_0_0, PropVariantClear,
+                },
             },
             Registry::{
                 HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_DWORD, REG_OPTION_NON_VOLATILE, REG_SZ,
@@ -52,8 +54,7 @@ use windows::{
         },
         UI::{
             Shell::{
-                IShellLinkW,
-                PropertiesSystem::{IPropertyStore, PROPERTYKEY},
+                IShellLinkW, PropertiesSystem::IPropertyStore,
                 SetCurrentProcessExplicitAppUserModelID, ShellLink,
             },
             WindowsAndMessaging::GetForegroundWindow,
@@ -169,9 +170,13 @@ fn ensure_start_menu_entry() -> windows::core::Result<()> {
         let mut value = PROPVARIANT::default();
         value.Anonymous.Anonymous = std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
             vt: VT_LPWSTR,
-            ..PROPVARIANT_0_0::default()
+            wReserved1: 0,
+            wReserved2: 0,
+            wReserved3: 0,
+            Anonymous: PROPVARIANT_0_0_0 {
+                pwszVal: PWSTR(text),
+            },
         });
-        value.Anonymous.Anonymous.Anonymous.pwszVal = PWSTR(text);
         let result = store
             .SetValue(&PKEY_APP_USER_MODEL_ID, &value)
             .and_then(|()| store.Commit());
