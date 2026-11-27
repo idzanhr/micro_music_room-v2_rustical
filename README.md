@@ -7,7 +7,7 @@ Licensed under **GPL-3.0-or-later** (same as the original).
 
 ## Download (portable)
 
-Get **`MicroMusicRoom-v2.0-Portable-win-x64.zip`** from the [Releases page](https://github.com/idzanhr/micro_music_room-v2_rustical/releases/latest).
+Get **`MicroMusicRoom-v2.0.1-Portable-win-x64.zip`** from the [Releases page](https://github.com/idzanhr/micro_music_room-v2_rustical/releases/latest).
 
 1. Unzip it anywhere (a USB stick works too). No installer, no admin rights, no extra runtimes.
 2. Run `MicroMusicRoom.exe`.
@@ -85,7 +85,7 @@ MMR_SAMPLES_DIR=/path/to/samples cargo test --test formats -- --nocapture
 
 ## Releasing
 
-Change the version in `RELEASE_VERSION` on `main` (or push a tag such as `v2.0`) and the *Release* workflow tests, builds, zips (with a SHA-256 file) and publishes the GitHub Release.
+Change the version in `RELEASE_VERSION` on `main` (or push a tag such as `v2.0.1`) and the *Release* workflow tests, builds, zips (with a SHA-256 file) and publishes the GitHub Release.
 
 ## Develop
 
