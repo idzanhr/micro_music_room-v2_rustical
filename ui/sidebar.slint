@@ -206,17 +206,23 @@ export component Sidebar inherits Rectangle {
             }
         }
 
-        // The playlists; right-click one to delete it.
+        // The playlists; right-click one to rename or delete it.
         ListView {
             vertical-stretch: 1;
 
             for playlist[index] in AppState.playlists: Rectangle {
                 height: 38px;
 
-                ContextMenuArea {
+                if AppState.renaming != index: ContextMenuArea {
                     Menu {
                         MenuItem {
-                            title: "Delete playlist";
+                            title: "Rename playlist";
+                            activated => {
+                                AppState.renaming = index;
+                            }
+                        }
+                        MenuItem {
+                            title: "Delete playlist (songs stay)";
                             activated => {
                                 AppState.delete-playlist(index);
                             }
@@ -228,6 +234,44 @@ export component Sidebar inherits Rectangle {
                         selected: AppState.view-index == index;
                         clicked => {
                             AppState.select-view(index);
+                        }
+                    }
+                }
+
+                if AppState.renaming == index: Rectangle {
+                    border-radius: Theme.radius;
+                    background: Theme.walnut-deep;
+                    border-width: 1px;
+                    border-color: Theme.copper;
+
+                    FocusScope {
+                        key-pressed(event) => {
+                            if (event.text == Key.Escape) {
+                                AppState.renaming = -1;
+                                return accept;
+                            }
+                            return reject;
+                        }
+
+                        rename-input := TextInput {
+                            x: 12px;
+                            y: 0px;
+                            width: parent.width - 24px;
+                            height: parent.height;
+                            text: playlist.name;
+                            color: Theme.parchment;
+                            selection-background-color: Theme.copper;
+                            selection-foreground-color: Theme.walnut-deep;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            init => {
+                                self.focus();
+                                self.select-all();
+                            }
+                            accepted => {
+                                AppState.renaming = -1;
+                                AppState.rename-playlist(index, self.text);
+                            }
                         }
                     }
                 }

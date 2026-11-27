@@ -44,6 +44,9 @@ export global AppState {
     callback add-files();
     callback create-playlist(string);
     callback delete-playlist(int);
+    callback rename-playlist(int, string);
+    // Which playlist's name is being edited in the sidebar (-1: none).
+    in-out property <int> renaming: -1;
 
     // Track rows (row = index in the visible list)
     callback rows-visible(int, int); // first visible row, how many fit: tags are read for these

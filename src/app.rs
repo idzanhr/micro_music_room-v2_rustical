@@ -416,6 +416,18 @@ impl App {
         }
     }
 
+    fn rename_playlist(&mut self, index: i32, name: &str) {
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
+        if self.browser.rename_playlist(index, name) {
+            self.status = format!("Renamed the playlist to “{}”.", name.trim());
+            self.save();
+        } else {
+            self.status = "Pick a name that isn't empty or already used.".into();
+        }
+    }
+
     fn delete_playlist(&mut self, index: i32) {
         let Ok(index) = usize::try_from(index) else {
             return;
@@ -939,6 +951,7 @@ pub fn wire(ui: &MainWindow, app: Rc<RefCell<App>>) -> Timer {
     on!(on_cycle_repeat, |a| a.cycle_repeat());
     on!(on_create_playlist, |a, name| a.create_playlist(&name));
     on!(on_delete_playlist, |a, i| a.delete_playlist(i));
+    on!(on_rename_playlist, |a, i, name| a.rename_playlist(i, &name));
     on!(on_add_to_playlist, |a, row, playlist| a
         .add_to_playlist(row, playlist));
     on!(on_remove_from_playlist, |a, row| a

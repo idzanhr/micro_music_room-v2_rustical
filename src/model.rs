@@ -201,6 +201,25 @@ impl Browser {
         Some(self.library.playlists.len() - 1)
     }
 
+    /// Rename a playlist. Fails (false) for an empty name or one another playlist already uses;
+    /// changing only the capitalisation of its own name is fine.
+    pub fn rename_playlist(&mut self, index: usize, name: &str) -> bool {
+        let name = name.trim();
+        let taken = self
+            .library
+            .playlists
+            .iter()
+            .enumerate()
+            .any(|(i, p)| i != index && p.name.eq_ignore_ascii_case(name));
+        match self.library.playlists.get_mut(index) {
+            Some(list) if !name.is_empty() && !taken => {
+                list.name = name.to_owned();
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn delete_playlist(&mut self, index: usize) -> bool {
         if index >= self.library.playlists.len() {
             return false;
@@ -384,6 +403,20 @@ mod tests {
         assert!(b.delete_playlist(1));
         assert_eq!(b.view(), View::AllTracks, "the viewed playlist is gone");
         assert!(!b.delete_playlist(7));
+    }
+
+    #[test]
+    fn renaming_a_playlist_checks_the_name_but_allows_a_case_change() {
+        let mut b = Browser::new(lib(&[]));
+        b.create_playlist("Mix");
+        b.create_playlist("Road");
+        assert!(b.rename_playlist(0, "  Chill  "));
+        assert_eq!(b.library().playlists[0].name, "Chill");
+        assert!(b.rename_playlist(0, "CHILL"), "own name, new capitals");
+        assert!(!b.rename_playlist(0, "road"), "another playlist's name");
+        assert!(!b.rename_playlist(0, "   "), "empty");
+        assert!(!b.rename_playlist(5, "Nope"), "no such playlist");
+        assert_eq!(b.library().playlists[0].name, "CHILL");
     }
 
     #[test]

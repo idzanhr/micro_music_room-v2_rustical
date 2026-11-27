@@ -273,6 +273,39 @@ export component TrackTable inherits Rectangle {
                     }
                 }
 
+                // Rename or delete the playlist that is open.
+                if AppState.view-index >= 0: Rectangle {
+                    width: 110px;
+                    height: 38px;
+                    y: (parent.height - self.height) / 2;
+
+                    playlist-menu := ContextMenuArea {
+                        Menu {
+                            MenuItem {
+                                title: "Rename playlist";
+                                activated => {
+                                    AppState.renaming = AppState.view-index;
+                                }
+                            }
+                            MenuItem {
+                                title: "Delete playlist (songs stay)";
+                                activated => {
+                                    AppState.delete-playlist(AppState.view-index);
+                                }
+                            }
+                        }
+                    }
+
+                    TextButton {
+                        width: parent.width;
+                        height: parent.height;
+                        text: "Playlist  ›";
+                        clicked => {
+                            playlist-menu.show({ x: 0px, y: parent.height });
+                        }
+                    }
+                }
+
                 // "Add to playlist" opens a menu of playlists for the selected songs.
                 Rectangle {
                     width: 160px;
